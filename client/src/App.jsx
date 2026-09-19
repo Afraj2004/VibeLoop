@@ -1,19 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import HeaderBar from './components/hud/HeaderBar.jsx';
 import GiftTray from './components/overlays/GiftTray.jsx';
-import { Video, VideoOff, Mic, MicOff, FastForward, Gift, Globe, Shield, Sparkles } from 'lucide-react';
+import ChatDrawer from './components/overlays/ChatDrawer.jsx';
+import AuthModal from './components/overlays/AuthModal.jsx';
+import { Video, VideoOff, Mic, MicOff, FastForward, Gift, MessageSquare, Sparkles } from 'lucide-react';
 import { io } from 'socket.io-client';
 
 const BACKEND_URL = import.meta.env.VITE_SIGNALING_SERVER || 'https://vibeloop-1kps.onrender.com';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [token, setToken] = useState(null);
+
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isAudioOn, setIsAudioOn] = useState(true);
   const [isMatched, setIsMatched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [isGiftTrayOpen, setIsGiftTrayOpen] = useState(false);
   
-  // Economy state
+  // Overlays
+  const [isGiftTrayOpen, setIsGiftTrayOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Chat & Economy
+  const [messages, setMessages] = useState([]);
   const [walletBalance, setWalletBalance] = useState(10.0);
   const [m2eEarned, setM2eEarned] = useState(0.0);
   const [secondsUntilReward, setSecondsUntilReward] = useState(180);
@@ -22,6 +32,16 @@ export default function App() {
   const remoteVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const socketRef = useRef(null);
+
+  // Load auth from localStorage on mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem('vibeloop_token');
+    const savedUser = localStorage.getItem('vibeloop_user');
+    if (savedToken && savedUser) {
+      setToken(savedToken);
+      setCurrentUser(JSON.parse(savedUser));
+    }
+  }, []);
 
   // Initialize camera and socket connection
   useEffect(() => {
@@ -42,11 +62,21 @@ export default function App() {
 
     startCamera();
 
-    // Connect to Socket server
-    socketRef.current = io(BACKEND_URL);
+    // Connect to Socket server with Auth Token if available
+    const socketOptions = token ? { auth: { token } } : {};
+    socketRef.current = io(BACKEND_URL, socketOptions);
+
+    socketRef.current.on('receive_message', (msg) => {
+      setMessages((prev) => [...prev.slice(-29), msg]);
+    });
+
+    socketRef.current.on('message_sent', (msg) => {
+      setMessages((prev) => [...prev.slice(-29), msg]);
+    });
 
     // Fetch initial balance
-    fetch(`${BACKEND_URL}/api/wallet/balance`)
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`${BACKEND_URL}/api/wallet/balance`, { headers })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -64,7 +94,15 @@ export default function App() {
         socketRef.current.disconnect();
       }
     };
-  }, []);
+  }, [token]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('vibeloop_token');
+    localStorage.removeItem('vibeloop_user');
+    setToken(null);
+    setCurrentUser(null);
+    window.location.reload();
+  };
 
   const toggleVideo = () => {
     if (localStreamRef.current) {
@@ -89,17 +127,29 @@ export default function App() {
   const handleNext = () => {
     setIsSearching(true);
     setIsMatched(false);
+    setMessages([]);
     setTimeout(() => {
       setIsSearching(false);
       setIsMatched(true);
     }, 1500);
   };
 
+  const handleSendMessage = (text) => {
+    if (!socketRef.current) return;
+    socketRef.current.emit('send_message', {
+      recipientId: 'guest_peer',
+      messageText: text
+    });
+  };
+
   const handleSendGift = async (gift) => {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`${BACKEND_URL}/api/wallet/send-gift`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           recipientId: 'guest_peer',
           giftId: gift.id
@@ -125,6 +175,9 @@ export default function App() {
         m2eDailyCap={10.0}
         secondsUntilNextReward={secondsUntilReward}
         isCallActive={isMatched}
+        currentUser={currentUser}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onLogout={handleLogout}
         onOpenBoostModal={() => alert('VibeBoost Modal: 1-hour priority matching unlocked with 10 VIBE!')}
         onOpenRechargeModal={() => alert('VIBE Store: Instant wallet refills coming next!')}
       />
@@ -211,6 +264,17 @@ export default function App() {
           <FastForward size={18} className="fill-slate-950" />
         </button>
 
+        {/* Chat Toggle Trigger */}
+        <button 
+          onClick={() => setIsChatOpen(!isChatOpen)}
+          className="p-4 rounded-2xl bg-[#12151E]/90 hover:bg-slate-800 border border-[#00F0FF]/40 text-[#00F0FF] backdrop-blur-xl transition-all shadow-lg active:scale-95 cursor-pointer relative"
+        >
+          <MessageSquare size={20} />
+          {messages.length > 0 && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#FF2A7A] animate-ping" />
+          )}
+        </button>
+
         {/* Gift Trigger */}
         <button 
           onClick={() => setIsGiftTrayOpen(true)}
@@ -221,13 +285,31 @@ export default function App() {
 
       </div>
 
-      {/* Micro-Gift Tray Modal */}
+      {/* Overlays */}
       <GiftTray 
         isOpen={isGiftTrayOpen}
         onClose={() => setIsGiftTrayOpen(false)}
         userBalance={walletBalance}
         recipientName="Stranger"
         onSendGift={handleSendGift}
+      />
+
+      <ChatDrawer 
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        currentUserId={currentUser?.id || 'guest'}
+      />
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        backendUrl={BACKEND_URL}
+        onAuthSuccess={(user, tok) => {
+          setCurrentUser(user);
+          setToken(tok);
+        }}
       />
 
     </div>
