@@ -1,20 +1,38 @@
-        export default function GiftTray({
-          selectedGift,
-          setSelectedGift,
-          recipientName,
-          userBalance,
-          hasEnough,
-          isSending,
-          handleSend,
-          onClose,
-          GIFTS,
-          Sparkles,
-          X,
-          Coins,
-          Send,
-        }) {
-          return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 transition-all duration-300">
+        import React, { useState } from 'react';
+import { X, Sparkles, Send, Coins } from 'lucide-react';
+
+const GIFTS = [
+  { id: 'rose', name: 'Cyber Rose', price: 1, icon: '🌹', color: '#FF2A7A' },
+  { id: 'heart', name: 'Neon Heart', price: 5, icon: '💖', color: '#FF2A7A' },
+  { id: 'flame', name: 'Vibe Flame', price: 10, icon: '🔥', color: '#FF9E00' },
+  { id: 'diamond', name: 'Hyper Diamond', price: 25, icon: '💎', color: '#00F0FF' },
+  { id: 'crown', name: 'Royal Crown', price: 75, icon: '👑', color: '#FFD166' }
+];
+
+export default function GiftTray({ isOpen, onClose, userBalance = 0, recipientName = "Peer", onSendGift }) {
+  const [selectedGift, setSelectedGift] = useState(GIFTS[0]);
+  const [isSending, setIsSending] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSend = async () => {
+    if (!selectedGift || userBalance < selectedGift.price || isSending) return;
+    
+    setIsSending(true);
+    try {
+      await onSendGift(selectedGift);
+      onClose();
+    } catch (err) {
+      console.error('Failed to send gift:', err);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const hasEnough = userBalance >= selectedGift?.price;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 transition-all duration-300">
       
       {/* Modal Container */}
       <div className="w-full max-w-md bg-[#12151E]/90 border border-slate-800 rounded-3xl p-6 shadow-2xl backdrop-blur-xl relative overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-200">
