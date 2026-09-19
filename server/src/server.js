@@ -18,6 +18,21 @@ app.use(cors({
 
 app.use(express.json());
 
+// Root status endpoint
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    service: 'VibeLoop Signaling & Economy Engine',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      iceServers: '/api/ice-servers',
+      walletBalance: '/api/wallet/balance'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // API Routes
 app.use('/api', apiRoutes);
 
