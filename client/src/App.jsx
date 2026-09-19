@@ -3,6 +3,7 @@ import HeaderBar from './components/hud/HeaderBar.jsx';
 import GiftTray from './components/overlays/GiftTray.jsx';
 import { Video, VideoOff, Mic, MicOff, FastForward, Gift, Globe, Shield, Sparkles } from 'lucide-react';
 import { io } from 'socket.io-client';
+import { Analytics } from '@vercel/analytics/react';
 
 const BACKEND_URL = import.meta.env.VITE_SIGNALING_SERVER || 'https://vibeloop-1kps.onrender.com';
 
@@ -229,6 +230,9 @@ export default function App() {
         recipientName="Stranger"
         onSendGift={handleSendGift}
       />
+
+      {/* Vercel Web Analytics */}
+      <Analytics />
 
     </div>
   );
