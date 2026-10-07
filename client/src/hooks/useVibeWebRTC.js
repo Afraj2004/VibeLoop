@@ -5,8 +5,9 @@ import FALLBACK_RTC_CONFIG, { getIceServerConfig } from '../utils/rtcConfig.js';
  * Camera capture + RTCPeerConnection negotiation over the signaling socket.
  *
  * status: 'idle' (not looking), 'searching' (in the match pool), 'connected' (matched with `peer`)
+ * The camera is only requested once `mediaEnabled` is true (after the age/terms gate).
  */
-export function useVibeWebRTC(socket, token) {
+export function useVibeWebRTC(socket, token, mediaEnabled = true) {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [status, setStatus] = useState('idle');
@@ -22,8 +23,9 @@ export function useVibeWebRTC(socket, token) {
   const statusRef = useRef(status);
   statusRef.current = status;
 
-  // Acquire camera + microphone once
+  // Acquire camera + microphone once allowed
   useEffect(() => {
+    if (!mediaEnabled) return;
     let cancelled = false;
 
     navigator.mediaDevices
@@ -52,7 +54,7 @@ export function useVibeWebRTC(socket, token) {
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     };
-  }, []);
+  }, [mediaEnabled]);
 
   // Fetch STUN/TURN credentials for this session
   useEffect(() => {

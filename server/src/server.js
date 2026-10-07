@@ -24,7 +24,7 @@ const allowedOrigins = process.env.CLIENT_ORIGINS
 
 app.use(cors({
   origin: allowedOrigins,
-  methods: ['GET', 'POST']
+  methods: ['GET', 'POST', 'PATCH']
 }));
 
 app.use(express.json({ limit: '16kb' }));

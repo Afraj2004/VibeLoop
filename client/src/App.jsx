@@ -3,31 +3,44 @@ import HeaderBar from './components/hud/HeaderBar.jsx';
 import GiftTray from './components/overlays/GiftTray.jsx';
 import ChatDrawer from './components/overlays/ChatDrawer.jsx';
 import AuthModal from './components/overlays/AuthModal.jsx';
+import ConsentModal, { TERMS_VERSION } from './components/overlays/ConsentModal.jsx';
+import ReportModal from './components/overlays/ReportModal.jsx';
+import FilterModal from './components/overlays/FilterModal.jsx';
+import HistoryBar from './components/overlays/HistoryBar.jsx';
 import { useSocket } from './hooks/useSocket.js';
 import { useVibeWebRTC } from './hooks/useVibeWebRTC.js';
 import { apiFetch, BACKEND_URL } from './utils/api.js';
-import { Video, VideoOff, Mic, MicOff, FastForward, Gift, MessageSquare, Sparkles, Square, AlertTriangle } from 'lucide-react';
+import {
+  Video, VideoOff, Mic, MicOff, FastForward, Gift, MessageSquare, Sparkles, Square,
+  AlertTriangle, Flag, SlidersHorizontal
+} from 'lucide-react';
 
-function loadSavedUser() {
+const DEFAULT_PREFERENCES = { targetGender: 'any', targetCountry: 'ALL' };
+
+function loadJson(key) {
   try {
-    return JSON.parse(localStorage.getItem('vibeloop_user'));
+    return JSON.parse(localStorage.getItem(key));
   } catch {
     return null;
   }
 }
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(loadSavedUser);
+  const [currentUser, setCurrentUser] = useState(() => loadJson('vibeloop_user'));
   const [token, setToken] = useState(() => localStorage.getItem('vibeloop_token'));
   const [sessionError, setSessionError] = useState(null);
+  const [hasConsented, setHasConsented] = useState(() => localStorage.getItem('vibeloop_consent') === TERMS_VERSION);
+  const [preferences, setPreferences] = useState(() => loadJson('vibeloop_filters') || DEFAULT_PREFERENCES);
 
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isAudioOn, setIsAudioOn] = useState(true);
 
   // Overlays
-  const [isGiftTrayOpen, setIsGiftTrayOpen] = useState(false);
+  const [giftTarget, setGiftTarget] = useState(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   // Chat & Economy
   const [messages, setMessages] = useState([]);
@@ -37,9 +50,12 @@ export default function App() {
   const [secondsUntilReward, setSecondsUntilReward] = useState(180);
   const [gifts, setGifts] = useState([]);
   const [incomingGift, setIncomingGift] = useState(null);
+  const [contacts, setContacts] = useState([]);
+  const [notice, setNotice] = useState(null);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const noticeTimeoutRef = useRef(null);
 
   const persistSession = useCallback((user, tok) => {
     localStorage.setItem('vibeloop_token', tok);
@@ -56,17 +72,30 @@ export default function App() {
     setToken(null);
   }, []);
 
+  const showNotice = useCallback((text, isError = false) => {
+    setNotice({ text, isError });
+    clearTimeout(noticeTimeoutRef.current);
+    noticeTimeoutRef.current = setTimeout(() => setNotice(null), 4000);
+  }, []);
+
   const { socket, onlineCount } = useSocket(token, clearSession);
-  const { localStream, remoteStream, status, peer, mediaError, matchError, findPartner, stop } = useVibeWebRTC(socket, token);
+  const {
+    localStream, remoteStream, status, peer, mediaError, matchError, findPartner, stop
+  } = useVibeWebRTC(socket, token, hasConsented);
   const stageError = sessionError || matchError || mediaError;
   const isMatched = status === 'connected';
 
-  // Instant guest access: every visitor gets a session without signing up
+  const handleConsent = () => {
+    localStorage.setItem('vibeloop_consent', TERMS_VERSION);
+    setHasConsented(true);
+  };
+
+  // Instant guest access once the age/terms gate is passed
   useEffect(() => {
-    if (token) return;
+    if (token || !hasConsented) return;
     let cancelled = false;
 
-    apiFetch('/api/auth/guest', { method: 'POST' })
+    apiFetch('/api/auth/guest', { method: 'POST', body: { ageConfirmed: true, termsAccepted: true } })
       .then((data) => {
         if (!cancelled) {
           setSessionError(null);
@@ -81,7 +110,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [token, persistSession]);
+  }, [token, hasConsented, persistSession]);
 
   // Fetch balance for the current session
   useEffect(() => {
@@ -102,38 +131,16 @@ export default function App() {
       .catch(console.error);
   }, []);
 
-  // Meet-to-Earn: ping while in a call; the server measures the actual call time
+  const fetchHistory = useCallback(() => {
+    if (!token) return;
+    apiFetch('/api/history', { token })
+      .then((data) => setContacts(data.contacts))
+      .catch(console.error);
+  }, [token]);
+
   useEffect(() => {
-    if (!socket || !isMatched) return;
-    const interval = setInterval(() => socket.emit('m2e_heartbeat'), 30000);
-    return () => clearInterval(interval);
-  }, [socket, isMatched]);
-
-  // Wallet events pushed by the server
-  useEffect(() => {
-    if (!socket) return;
-    let giftTimeout;
-
-    const onProgress = (progress) => {
-      setSecondsUntilReward(progress.secondsUntilNextReward);
-      if (progress.balance !== undefined) setWalletBalance(progress.balance);
-      if (progress.m2eEarnedToday !== undefined) setM2eEarned(progress.m2eEarnedToday);
-    };
-
-    const onGiftReceived = (event) => {
-      setIncomingGift(event);
-      clearTimeout(giftTimeout);
-      giftTimeout = setTimeout(() => setIncomingGift(null), 4000);
-    };
-
-    socket.on('m2e_progress', onProgress);
-    socket.on('gift_received', onGiftReceived);
-    return () => {
-      clearTimeout(giftTimeout);
-      socket.off('m2e_progress', onProgress);
-      socket.off('gift_received', onGiftReceived);
-    };
-  }, [socket]);
+    fetchHistory();
+  }, [fetchHistory]);
 
   // Chat events
   useEffect(() => {
@@ -161,6 +168,53 @@ export default function App() {
     setMessages([]);
   }, [peer?.id]);
 
+  // Meet-to-Earn: ping while in a call; the server measures the actual call time
+  useEffect(() => {
+    if (!socket || !isMatched) return;
+    const interval = setInterval(() => socket.emit('m2e_heartbeat'), 30000);
+    return () => clearInterval(interval);
+  }, [socket, isMatched]);
+
+  // Wallet, history and safety events pushed by the server
+  useEffect(() => {
+    if (!socket) return;
+    let giftTimeout;
+
+    const onProgress = (progress) => {
+      setSecondsUntilReward(progress.secondsUntilNextReward);
+      if (progress.balance !== undefined) setWalletBalance(progress.balance);
+      if (progress.m2eEarnedToday !== undefined) setM2eEarned(progress.m2eEarnedToday);
+    };
+
+    const onGiftReceived = (event) => {
+      setIncomingGift(event);
+      clearTimeout(giftTimeout);
+      giftTimeout = setTimeout(() => setIncomingGift(null), 4000);
+    };
+
+    const onSafetyAck = ({ action }) => {
+      showNotice(action === 'report'
+        ? "Thanks for reporting. You won't be matched with them again."
+        : "Blocked. You won't be matched with them again.");
+    };
+
+    const onSafetyError = ({ error }) => showNotice(error, true);
+
+    socket.on('m2e_progress', onProgress);
+    socket.on('gift_received', onGiftReceived);
+    socket.on('history_updated', fetchHistory);
+    socket.on('safety_ack', onSafetyAck);
+    socket.on('safety_error', onSafetyError);
+    return () => {
+      clearTimeout(giftTimeout);
+      socket.off('m2e_progress', onProgress);
+      socket.off('gift_received', onGiftReceived);
+      socket.off('history_updated', fetchHistory);
+      socket.off('safety_ack', onSafetyAck);
+      socket.off('safety_error', onSafetyError);
+    };
+  }, [socket, fetchHistory, showNotice]);
+
   useEffect(() => {
     if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
   }, [localStream]);
@@ -168,6 +222,11 @@ export default function App() {
   useEffect(() => {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
   }, [remoteStream]);
+
+  // Close the report dialog if the partner leaves first
+  useEffect(() => {
+    if (!isMatched) setIsReportOpen(false);
+  }, [isMatched]);
 
   const handleLogout = () => {
     stop();
@@ -194,7 +253,7 @@ export default function App() {
     if (status === 'searching') {
       stop();
     } else {
-      findPartner();
+      findPartner(preferences);
     }
   };
 
@@ -205,13 +264,40 @@ export default function App() {
 
   // Errors propagate so the gift tray can show them
   const handleSendGift = async (gift) => {
-    if (!peer) return;
+    if (!giftTarget) return;
     const data = await apiFetch('/api/wallet/send-gift', {
       token,
       method: 'POST',
-      body: { recipientId: peer.id, giftId: gift.id }
+      body: { recipientId: giftTarget.id, giftId: gift.id }
     });
     setWalletBalance(data.senderNewBalance);
+  };
+
+  const handleReport = (reason, details) => {
+    setIsReportOpen(false);
+    socket.emit('report_partner', { reason, details });
+    findPartner(preferences);
+  };
+
+  const handleBlock = () => {
+    setIsReportOpen(false);
+    socket.emit('block_partner');
+    findPartner(preferences);
+  };
+
+  const profile = {
+    gender: currentUser?.gender || 'other',
+    country: currentUser?.country || 'ALL'
+  };
+
+  const handleSaveFilters = async ({ preferences: nextPreferences, profile: nextProfile }) => {
+    if (nextProfile.gender !== profile.gender || nextProfile.country !== profile.country) {
+      // New token carries the updated profile; the socket reconnects with it
+      const data = await apiFetch('/api/auth/profile', { token, method: 'PATCH', body: nextProfile });
+      persistSession(data.user, data.token);
+    }
+    localStorage.setItem('vibeloop_filters', JSON.stringify(nextPreferences));
+    setPreferences(nextPreferences);
   };
 
   const stageTitle = {
@@ -219,6 +305,8 @@ export default function App() {
     searching: 'Connecting to next vibe...',
     connected: 'Connecting video...'
   }[status];
+
+  const controlButton = 'p-3 sm:p-4 rounded-2xl backdrop-blur-xl transition-all shadow-lg active:scale-95 cursor-pointer';
 
   return (
     <div className="relative w-screen h-screen bg-[#08090D] overflow-hidden flex flex-col items-center justify-center">
@@ -272,6 +360,18 @@ export default function App() {
         )}
       </div>
 
+      {/* In-call Report / Block */}
+      {isMatched && (
+        <button
+          onClick={() => setIsReportOpen(true)}
+          title="Report or block"
+          className="absolute top-20 left-4 sm:top-24 sm:left-6 z-30 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-[#12151E]/80 border border-red-500/40 text-red-400 hover:bg-red-500/10 backdrop-blur-xl text-xs font-bold shadow-lg transition-colors cursor-pointer"
+        >
+          <Flag size={14} />
+          <span>Report</span>
+        </button>
+      )}
+
       {/* Draggable/Fixed Local PIP Camera */}
       <div className="absolute top-20 right-4 sm:top-24 sm:right-6 w-32 h-44 sm:w-44 sm:h-60 rounded-3xl overflow-hidden border border-slate-700/80 shadow-2xl bg-[#12151E]/80 backdrop-blur-xl z-30 transition-all">
         <video
@@ -291,13 +391,21 @@ export default function App() {
         </div>
       </div>
 
+      {/* Recent contacts (20s+ calls), shown between calls */}
+      {!isMatched && (
+        <HistoryBar
+          contacts={contacts}
+          onSelect={(contact) => setGiftTarget({ id: contact.peerId, username: contact.username })}
+        />
+      )}
+
       {/* Bottom Floating Control Bar */}
-      <div className="absolute bottom-6 z-40 px-4 flex items-center gap-3 max-w-lg w-full justify-center">
+      <div className="absolute bottom-6 z-40 px-4 flex items-center gap-2 sm:gap-3 max-w-lg w-full justify-center">
 
         {/* Toggle Mic */}
         <button
           onClick={toggleAudio}
-          className={`p-4 rounded-2xl border backdrop-blur-xl transition-all shadow-lg ${
+          className={`${controlButton} border ${
             isAudioOn
               ? 'bg-[#12151E]/90 border-slate-800 text-white hover:bg-slate-800'
               : 'bg-red-500/20 border-red-500/50 text-red-400'
@@ -309,7 +417,7 @@ export default function App() {
         {/* Toggle Video */}
         <button
           onClick={toggleVideo}
-          className={`p-4 rounded-2xl border backdrop-blur-xl transition-all shadow-lg ${
+          className={`${controlButton} border ${
             isVideoOn
               ? 'bg-[#12151E]/90 border-slate-800 text-white hover:bg-slate-800'
               : 'bg-red-500/20 border-red-500/50 text-red-400'
@@ -321,8 +429,8 @@ export default function App() {
         {/* Primary START / STOP / NEXT Button */}
         <button
           onClick={handlePrimaryAction}
-          disabled={!socket}
-          className="flex-1 py-4 px-6 rounded-2xl bg-gradient-to-r from-[#00F0FF] to-[#FF2A7A] hover:opacity-95 text-slate-950 font-black text-sm tracking-wider flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,240,255,0.4)] active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!socket || !hasConsented}
+          className="flex-1 py-3 sm:py-4 px-4 sm:px-6 rounded-2xl bg-gradient-to-r from-[#00F0FF] to-[#FF2A7A] hover:opacity-95 text-slate-950 font-black text-sm tracking-wider flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,240,255,0.4)] active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {status === 'searching' ? (
             <>
@@ -337,10 +445,22 @@ export default function App() {
           )}
         </button>
 
+        {/* Filters */}
+        <button
+          onClick={() => setIsFilterOpen(true)}
+          title="Match filters"
+          className={`${controlButton} relative bg-[#12151E]/90 hover:bg-slate-800 border border-slate-800 text-white`}
+        >
+          <SlidersHorizontal size={20} />
+          {(preferences.targetGender !== 'any' || preferences.targetCountry !== 'ALL') && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#00F0FF]" />
+          )}
+        </button>
+
         {/* Chat Toggle Trigger */}
         <button
           onClick={() => setIsChatOpen(!isChatOpen)}
-          className="p-4 rounded-2xl bg-[#12151E]/90 hover:bg-slate-800 border border-[#00F0FF]/40 text-[#00F0FF] backdrop-blur-xl transition-all shadow-lg active:scale-95 cursor-pointer relative"
+          className={`${controlButton} relative bg-[#12151E]/90 hover:bg-slate-800 border border-[#00F0FF]/40 text-[#00F0FF]`}
         >
           <MessageSquare size={20} />
           {messages.length > 0 && (
@@ -350,14 +470,25 @@ export default function App() {
 
         {/* Gift Trigger */}
         <button
-          onClick={() => setIsGiftTrayOpen(true)}
+          onClick={() => setGiftTarget(peer)}
           disabled={!isMatched}
-          className="p-4 rounded-2xl bg-[#12151E]/90 hover:bg-slate-800 border border-[#FFD166]/40 text-[#FFD166] backdrop-blur-xl transition-all shadow-lg active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          className={`${controlButton} bg-[#12151E]/90 hover:bg-slate-800 border border-[#FFD166]/40 text-[#FFD166] disabled:opacity-40 disabled:cursor-not-allowed`}
         >
           <Gift size={20} />
         </button>
 
       </div>
+
+      {/* Toast notices (safety confirmations / errors) */}
+      {notice && (
+        <div className={`absolute top-24 left-1/2 -translate-x-1/2 z-50 max-w-sm px-4 py-3 rounded-2xl backdrop-blur-xl text-xs font-semibold shadow-lg border ${
+          notice.isError
+            ? 'bg-red-500/10 border-red-500/40 text-red-300'
+            : 'bg-[#12151E]/90 border-[#00F0FF]/40 text-slate-200'
+        }`}>
+          {notice.text}
+        </div>
+      )}
 
       {/* Incoming Gift Notification */}
       {incomingGift && (
@@ -376,11 +507,11 @@ export default function App() {
 
       {/* Overlays */}
       <GiftTray
-        isOpen={isGiftTrayOpen && isMatched}
-        onClose={() => setIsGiftTrayOpen(false)}
+        isOpen={Boolean(giftTarget)}
+        onClose={() => setGiftTarget(null)}
         gifts={gifts}
         userBalance={walletBalance}
-        recipientName={peer?.username || 'Stranger'}
+        recipientName={giftTarget?.username || 'Stranger'}
         onSendGift={handleSendGift}
       />
 
@@ -393,12 +524,32 @@ export default function App() {
         currentUserId={currentUser?.id}
       />
 
+      {isReportOpen && isMatched && (
+        <ReportModal
+          peerName={peer?.username}
+          onClose={() => setIsReportOpen(false)}
+          onReport={handleReport}
+          onBlock={handleBlock}
+        />
+      )}
+
+      {isFilterOpen && (
+        <FilterModal
+          preferences={preferences}
+          profile={profile}
+          onClose={() => setIsFilterOpen(false)}
+          onSave={handleSaveFilters}
+        />
+      )}
+
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         backendUrl={BACKEND_URL}
         onAuthSuccess={persistSession}
       />
+
+      {!hasConsented && <ConsentModal onAccept={handleConsent} />}
 
     </div>
   );
