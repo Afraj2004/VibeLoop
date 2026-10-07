@@ -12,6 +12,7 @@ export function useVibeWebRTC(socket, token) {
   const [status, setStatus] = useState('idle');
   const [peer, setPeer] = useState(null);
   const [mediaError, setMediaError] = useState(null);
+  const [matchError, setMatchError] = useState(null);
 
   const localStreamRef = useRef(null);
   const pcRef = useRef(null);
@@ -82,6 +83,7 @@ export function useVibeWebRTC(socket, token) {
     if (!socket) return;
     if (preferences) preferencesRef.current = preferences;
     closePeerConnection();
+    setMatchError(null);
     setStatus('searching');
     socket.emit('find_partner', preferencesRef.current);
   }, [socket, closePeerConnection]);
@@ -200,6 +202,7 @@ export function useVibeWebRTC(socket, token) {
 
     const onMatchError = ({ error }) => {
       console.error('[VibeLoop Match]', error);
+      setMatchError(error);
       closePeerConnection();
       setStatus('idle');
     };
@@ -223,5 +226,5 @@ export function useVibeWebRTC(socket, token) {
     };
   }, [socket, closePeerConnection]);
 
-  return { localStream, remoteStream, status, peer, mediaError, findPartner, stop };
+  return { localStream, remoteStream, status, peer, mediaError, matchError, findPartner, stop };
 }

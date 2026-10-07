@@ -3,6 +3,11 @@ const { verifyToken } = require('../config/jwt');
 const matchmaker = require('../matchmaker');
 const { saveAndDeliverMessage } = require('./chatService');
 const meetToEarn = require('./meetToEarn');
+const { consume } = require('../middlewares/rateLimiter');
+
+// Skip-spam guard: bots cycling the queue get cut off; humans rarely skip more than once every few seconds
+const FIND_PARTNER_LIMIT = { limit: 40, windowSeconds: 60 };
+const CHAT_LIMIT = { limit: 15, windowSeconds: 10 };
 
 function toPublicProfile(user) {
   return { id: user.id, username: user.username, country: user.country };
@@ -124,6 +129,13 @@ function registerSignaling(io) {
       };
 
       try {
+        const { limit, windowSeconds } = FIND_PARTNER_LIMIT;
+        const { allowed, retryAfter } = await consume(`find:${user.id}`, limit, windowSeconds);
+        if (!allowed) {
+          socket.emit('match_error', { error: `You're skipping too fast. Try again in ${retryAfter}s.` });
+          return;
+        }
+
         // Each loop either pairs, enqueues, or discards one stale queue entry, so it terminates
         for (;;) {
           const peerSocketId = await matchmaker.findOrEnqueue(socket.id, userState);
@@ -181,11 +193,18 @@ function registerSignaling(io) {
     socket.on('m2e_heartbeat', () => accrueCallTime(socket));
 
     // In-call chat goes to the current partner only
-    socket.on('send_message', ({ messageText } = {}) => {
+    socket.on('send_message', async ({ messageText } = {}) => {
       const partner = io.sockets.sockets.get(socket.data.partnerId);
       if (!partner) {
         return socket.emit('chat_error', { error: 'You are not in a call' });
       }
+
+      const { limit, windowSeconds } = CHAT_LIMIT;
+      const { allowed } = await consume(`chat:${user.id}`, limit, windowSeconds);
+      if (!allowed) {
+        return socket.emit('chat_error', { error: 'Slow down! You are sending messages too quickly.' });
+      }
+
       saveAndDeliverMessage(io, socket, { recipientId: partner.data.user.id, messageText });
     });
 

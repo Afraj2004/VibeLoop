@@ -10,6 +10,13 @@ const { registerSignaling } = require('./services/webrtcSignaling');
 const app = express();
 const server = http.createServer(app);
 
+// Behind a reverse proxy (Render, Caddy, Nginx) set TRUST_PROXY to the hop count so
+// req.ip is the real client address used by IP rate limits. Leave unset when exposed directly,
+// otherwise clients could spoof X-Forwarded-For to dodge limits.
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', Number(process.env.TRUST_PROXY));
+}
+
 // Comma-separated list of allowed client origins; open in local development
 const allowedOrigins = process.env.CLIENT_ORIGINS
   ? process.env.CLIENT_ORIGINS.split(',').map((o) => o.trim())
@@ -47,6 +54,8 @@ app.get('/health', (req, res) => {
 
 // Socket.IO Signaling Server Setup
 const io = new Server(server, {
+  // SDP offers are a few KB; nothing legitimate needs the 1 MB default
+  maxHttpBufferSize: 64 * 1024,
   cors: {
     origin: allowedOrigins,
     methods: ['GET', 'POST']

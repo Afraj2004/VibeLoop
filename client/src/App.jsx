@@ -31,6 +31,7 @@ export default function App() {
 
   // Chat & Economy
   const [messages, setMessages] = useState([]);
+  const [chatError, setChatError] = useState(null);
   const [walletBalance, setWalletBalance] = useState(0);
   const [m2eEarned, setM2eEarned] = useState(0.0);
   const [secondsUntilReward, setSecondsUntilReward] = useState(180);
@@ -56,7 +57,8 @@ export default function App() {
   }, []);
 
   const { socket, onlineCount } = useSocket(token, clearSession);
-  const { localStream, remoteStream, status, peer, mediaError, findPartner, stop } = useVibeWebRTC(socket, token);
+  const { localStream, remoteStream, status, peer, mediaError, matchError, findPartner, stop } = useVibeWebRTC(socket, token);
+  const stageError = sessionError || matchError || mediaError;
   const isMatched = status === 'connected';
 
   // Instant guest access: every visitor gets a session without signing up
@@ -136,12 +138,21 @@ export default function App() {
   // Chat events
   useEffect(() => {
     if (!socket) return;
+    let errorTimeout;
     const appendMessage = (msg) => setMessages((prev) => [...prev.slice(-29), msg]);
+    const onChatError = ({ error }) => {
+      setChatError(error);
+      clearTimeout(errorTimeout);
+      errorTimeout = setTimeout(() => setChatError(null), 4000);
+    };
     socket.on('receive_message', appendMessage);
     socket.on('message_sent', appendMessage);
+    socket.on('chat_error', onChatError);
     return () => {
+      clearTimeout(errorTimeout);
       socket.off('receive_message', appendMessage);
       socket.off('message_sent', appendMessage);
+      socket.off('chat_error', onChatError);
     };
   }, [socket]);
 
@@ -251,10 +262,10 @@ export default function App() {
                   : 'Press START to instantly meet verified people around the globe. Earn VIBE tokens as you chat.'}
               </p>
             </div>
-            {(sessionError || mediaError) && (
+            {stageError && (
               <div className="flex items-start gap-2 max-w-sm p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs text-left">
                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                <span>{sessionError || mediaError}</span>
+                <span>{stageError}</span>
               </div>
             )}
           </div>
@@ -377,6 +388,7 @@ export default function App() {
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
         messages={messages}
+        error={chatError}
         onSendMessage={handleSendMessage}
         currentUserId={currentUser?.id}
       />
