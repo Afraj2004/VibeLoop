@@ -9,7 +9,8 @@ const USER_TTL_SECONDS = 2 * 60 * 60;
  * Doing both in one script means two simultaneous searchers can never both end up waiting.
  *
  * A candidate is compatible only if the match is reciprocal: the candidate's own
- * gender/country filters must accept the requester as well. The matched peer is
+ * gender/country filters must accept the requester as well, and neither user has
+ * blocked the other (blocks:{userId} sets, see services/moderation.js). The matched peer is
  * removed from ALL four of its queues so it can never be handed out twice.
  *
  * ARGV: mySocketId, myUserId, myGender, myCountry, targetGender, targetCountry
@@ -44,6 +45,8 @@ const FIND_OR_ENQUEUE_LUA = `
           else
             local p = redis.call('HMGET', 'user:' .. sid, 'userId', 'gender', 'country', 'targetGender', 'targetCountry')
             if p[1] ~= my_uid
+              and redis.call('SISMEMBER', 'blocks:' .. my_uid, p[1]) == 0
+              and redis.call('SISMEMBER', 'blocks:' .. p[1], my_uid) == 0
               and (p[4] == 'any' or p[4] == my_gender)
               and (p[5] == 'ALL' or p[5] == my_country) then
               for _, k in ipairs(queues_for(p[2], p[3])) do

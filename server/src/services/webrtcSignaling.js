@@ -3,14 +3,30 @@ const { verifyToken } = require('../config/jwt');
 const matchmaker = require('../matchmaker');
 const { saveAndDeliverMessage } = require('./chatService');
 const meetToEarn = require('./meetToEarn');
+const history = require('./history');
+const moderation = require('./moderation');
 const { consume } = require('../middlewares/rateLimiter');
 
 // Skip-spam guard: bots cycling the queue get cut off; humans rarely skip more than once every few seconds
 const FIND_PARTNER_LIMIT = { limit: 40, windowSeconds: 60 };
 const CHAT_LIMIT = { limit: 15, windowSeconds: 10 };
+const REPORT_LIMIT = { limit: 10, windowSeconds: 60 * 60 };
 
 function toPublicProfile(user) {
   return { id: user.id, username: user.username, country: user.country };
+}
+
+function suspensionMessage(bannedUntil) {
+  return `Your account is temporarily suspended after multiple community reports. You can match again after ${new Date(bannedUntil).toUTCString()}.`;
+}
+
+// Mirrors Express's trust-proxy handling so socket reports carry the same client IP as REST calls
+function clientIp(socket) {
+  const forwarded = socket.handshake.headers['x-forwarded-for'];
+  if (process.env.TRUST_PROXY && forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return socket.handshake.address;
 }
 
 /**
@@ -60,7 +76,8 @@ function registerSignaling(io) {
   }
 
   /**
-   * Tears down the socket's current call (if any) and notifies the partner
+   * Tears down the socket's current call (if any), notifies the partner and
+   * logs the contact to both histories if the call lasted 20+ seconds
    */
   function endCall(socket) {
     const partnerId = socket.data.partnerId;
@@ -74,6 +91,31 @@ function registerSignaling(io) {
       accrueCallTime(partner);
       partner.data.partnerId = null;
       partner.emit('partner_left');
+
+      const durationSeconds = Math.floor((Date.now() - socket.data.connectedAt) / 1000);
+      history
+        .recordCall(socket.data.user, partner.data.user, durationSeconds)
+        .then((recorded) => {
+          if (recorded) {
+            socket.emit('history_updated');
+            partner.emit('history_updated');
+          }
+        })
+        .catch((err) => console.error('[VibeLoop History] record failed:', err.message));
+    }
+  }
+
+  /**
+   * Drops every socket of a newly suspended user out of calls and the match pool
+   */
+  function enforceSuspension(userId, bannedUntil) {
+    const socketIds = io.of('/').adapter.rooms.get(`user:${userId}`) || new Set();
+    for (const socketId of socketIds) {
+      const target = io.sockets.sockets.get(socketId);
+      if (!target) continue;
+      endCall(target);
+      matchmaker.removeUser(target.id, target.data.user).catch(() => {});
+      target.emit('match_error', { error: suspensionMessage(bannedUntil) });
     }
   }
 
@@ -112,6 +154,10 @@ function registerSignaling(io) {
     socket.join(`user:${user.id}`);
     broadcastOnlineCount();
 
+    moderation
+      .hydrateSafetyState(user.id)
+      .catch((err) => console.error('[VibeLoop Safety] hydrate failed:', err.message));
+
     // One matchmaking attempt in flight per socket; repeats are ignored until it settles
     let isFinding = false;
 
@@ -129,6 +175,12 @@ function registerSignaling(io) {
       };
 
       try {
+        const bannedUntil = await moderation.getBanExpiry(user.id);
+        if (bannedUntil) {
+          socket.emit('match_error', { error: suspensionMessage(bannedUntil) });
+          return;
+        }
+
         const { limit, windowSeconds } = FIND_PARTNER_LIMIT;
         const { allowed, retryAfter } = await consume(`find:${user.id}`, limit, windowSeconds);
         if (!allowed) {
@@ -187,6 +239,62 @@ function registerSignaling(io) {
 
     socket.on('ice_candidate', ({ candidate } = {}) => {
       if (candidate) relayToPartner(socket, 'ice_candidate', { candidate });
+    });
+
+    // Trust & safety. Both end the call; the client then searches again.
+    // blockUser() is invoked before endCall() so its Redis write is queued ahead of any
+    // follow-up find_partner from either side: the pair can never be re-matched.
+    socket.on('block_partner', async () => {
+      const partner = io.sockets.sockets.get(socket.data.partnerId);
+      if (!partner) return;
+
+      const blocked = moderation.blockUser(user.id, partner.data.user.id);
+      endCall(socket);
+
+      try {
+        await blocked;
+        socket.emit('safety_ack', { action: 'block' });
+      } catch (err) {
+        console.error('[VibeLoop Safety] block failed:', err.message);
+      }
+    });
+
+    socket.on('report_partner', async ({ reason, details } = {}) => {
+      const partner = io.sockets.sockets.get(socket.data.partnerId);
+      if (!partner) return;
+      if (!moderation.REPORT_REASONS.includes(reason)) {
+        return socket.emit('safety_error', { error: 'Invalid report reason' });
+      }
+
+      // Reporting always blocks, even if the report itself is rate-limited
+      const reportedId = partner.data.user.id;
+      const blocked = moderation.blockUser(user.id, reportedId);
+      endCall(socket);
+
+      try {
+        await blocked;
+
+        const { limit, windowSeconds } = REPORT_LIMIT;
+        const { allowed } = await consume(`report:${user.id}`, limit, windowSeconds);
+        if (!allowed) {
+          return socket.emit('safety_error', { error: 'You have sent too many reports. Please try again later.' });
+        }
+
+        const bannedUntil = await moderation.fileReport({
+          reporterId: user.id,
+          reportedId,
+          reason,
+          details: typeof details === 'string' ? details.trim().substring(0, 500) : null,
+          reporterIp: clientIp(socket)
+        });
+        if (bannedUntil) {
+          enforceSuspension(reportedId, bannedUntil);
+        }
+        socket.emit('safety_ack', { action: 'report' });
+      } catch (err) {
+        console.error('[VibeLoop Safety] report failed:', err.message);
+        socket.emit('safety_error', { error: 'Could not submit your report. Please try again.' });
+      }
     });
 
     // Periodic client ping while in a call; the server decides how much time counts

@@ -3,6 +3,7 @@ const router = express.Router();
 const walletController = require('../controllers/walletController');
 const turnController = require('../controllers/turnController');
 const authController = require('../controllers/authController');
+const userController = require('../controllers/userController');
 const auth = require('../middlewares/auth');
 const { rateLimit } = require('../middlewares/rateLimiter');
 
@@ -13,6 +14,15 @@ router.post('/auth/guest', rateLimit({ name: 'guest', limit: 20, windowSeconds: 
 router.post('/auth/register', rateLimit({ name: 'register', limit: 5, windowSeconds: HOUR }), authController.register);
 router.post('/auth/login', rateLimit({ name: 'login', limit: 10, windowSeconds: 15 * 60 }), authController.login);
 router.get('/auth/me', auth, authController.getMe);
+router.patch(
+  '/auth/profile',
+  auth,
+  rateLimit({ name: 'profile', limit: 20, windowSeconds: HOUR, by: 'user' }),
+  authController.updateProfile
+);
+
+// 20-second contact history
+router.get('/history', auth, userController.getHistory);
 
 // ICE / STUN / TURN Credentials (authenticated so relay credentials are not handed to anyone)
 router.get(

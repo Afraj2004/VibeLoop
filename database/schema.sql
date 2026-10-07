@@ -27,6 +27,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS earned_balance NUMERIC(12, 2) NOT NUL
 ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_earned_tokens NUMERIC(5, 2) NOT NULL DEFAULT 0.00;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_earned_date DATE;
 
+-- Trust & safety: consent records and temporary suspensions
+ALTER TABLE users ADD COLUMN IF NOT EXISTS age_confirmed_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version VARCHAR(16);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMP WITH TIME ZONE;
+
 -- Real-Time Match History (20-second threshold records)
 CREATE TABLE IF NOT EXISTS match_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -45,6 +51,28 @@ BEGIN
         ALTER TABLE match_history RENAME COLUMN matched_user_id TO peer_id;
     END IF;
 END $$;
+
+CREATE INDEX IF NOT EXISTS idx_match_history_user ON match_history(user_id, created_at DESC);
+
+-- User reports (kept for manual review; drive automatic temporary bans)
+CREATE TABLE IF NOT EXISTS reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reporter_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    reported_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason VARCHAR(32) NOT NULL,
+    details VARCHAR(500),
+    reporter_ip VARCHAR(64),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_reports_reported ON reports(reported_id, created_at DESC);
+
+-- Blocks: blocked pairs are never matched again
+CREATE TABLE IF NOT EXISTS blocks (
+    blocker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    blocked_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (blocker_id, blocked_id)
+);
 
 -- Token Transactions
 CREATE TABLE IF NOT EXISTS token_transactions (
