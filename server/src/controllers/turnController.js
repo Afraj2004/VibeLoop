@@ -6,11 +6,11 @@ const crypto = require('crypto');
  */
 exports.getIceServers = (req, res) => {
   const turnSecret = process.env.TURN_SECRET || 'vibeloop_development_turn_secret_2025';
-  const ttlSeconds = parseInt(process.env.TURN_TTL || '86400', 10); // 24 hours
-  
+  const ttlSeconds = parseInt(process.env.TURN_TTL || '3600', 10); // 1 hour
+
   // Ephemeral username formatted as: UNIX_EXPIRATION_TIMESTAMP:USER_ID
   const expirationTimestamp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const username = `${expirationTimestamp}:vibeloop_guest`;
+  const username = `${expirationTimestamp}:${req.user.id}`;
 
   // HMAC-SHA1 signature using TURN_SECRET
   const hmac = crypto.createHmac('sha1', turnSecret);
