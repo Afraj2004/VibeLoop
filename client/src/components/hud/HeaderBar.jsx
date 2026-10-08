@@ -88,7 +88,7 @@ export default function HeaderBar({
         </button>
 
         {/* User Status / Login Button */}
-        {currentUser ? (
+        {currentUser && !currentUser.isGuest ? (
           <div className="flex items-center gap-1.5 bg-[#12151E]/90 border border-slate-800 px-3 py-1.5 rounded-2xl shadow-xl text-xs">
             <User size={13} className="text-[#00F0FF]" />
             <span className="font-bold text-white max-w-[80px] truncate">{currentUser.username}</span>

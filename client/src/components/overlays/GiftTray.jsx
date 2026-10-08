@@ -1,29 +1,31 @@
-        import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { X, Sparkles, Send, Coins } from 'lucide-react';
 
-const GIFTS = [
-  { id: 'rose', name: 'Cyber Rose', price: 1, icon: '🌹', color: '#FF2A7A' },
-  { id: 'heart', name: 'Neon Heart', price: 5, icon: '💖', color: '#FF2A7A' },
-  { id: 'flame', name: 'Vibe Flame', price: 10, icon: '🔥', color: '#FF9E00' },
-  { id: 'diamond', name: 'Hyper Diamond', price: 25, icon: '💎', color: '#00F0FF' },
-  { id: 'crown', name: 'Royal Crown', price: 75, icon: '👑', color: '#FFD166' }
-];
-
-export default function GiftTray({ isOpen, onClose, userBalance = 0, recipientName = "Peer", onSendGift }) {
-  const [selectedGift, setSelectedGift] = useState(GIFTS[0]);
+export default function GiftTray({ isOpen, onClose, gifts = [], userBalance = 0, recipientName = "Peer", onSendGift }) {
+  const [selectedGiftId, setSelectedGiftId] = useState(null);
   const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState('');
 
-  if (!isOpen) return null;
+  if (!isOpen || gifts.length === 0) return null;
+
+  const selectedGift = gifts.find((g) => g.id === selectedGiftId) || gifts[0];
+
+  const handleClose = () => {
+    setError('');
+    onClose();
+  };
 
   const handleSend = async () => {
     if (!selectedGift || userBalance < selectedGift.price || isSending) return;
-    
+
     setIsSending(true);
+    setError('');
     try {
       await onSendGift(selectedGift);
-      onClose();
+      handleClose();
     } catch (err) {
       console.error('Failed to send gift:', err);
+      setError(err.message || 'Failed to send gift');
     } finally {
       setIsSending(false);
     }
@@ -54,8 +56,8 @@ export default function GiftTray({ isOpen, onClose, userBalance = 0, recipientNa
               <p className="text-xs text-slate-400">Gift to <span className="text-slate-200 font-medium">{recipientName}</span> (50% value earned)</p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
+          <button
+            onClick={handleClose}
             className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
           >
             <X size={18} />
@@ -63,13 +65,13 @@ export default function GiftTray({ isOpen, onClose, userBalance = 0, recipientNa
         </div>
 
         {/* Gift Grid */}
-        <div className="grid grid-cols-5 gap-3 mb-6">
-          {GIFTS.map((gift) => {
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          {gifts.map((gift) => {
             const isSelected = selectedGift?.id === gift.id;
             return (
               <button
                 key={gift.id}
-                onClick={() => setSelectedGift(gift)}
+                onClick={() => setSelectedGiftId(gift.id)}
                 className={`relative flex flex-col items-center justify-between p-3 rounded-2xl border transition-all duration-200 group ${
                   isSelected
                     ? 'bg-slate-800/80 border-[#00F0FF] shadow-[0_0_15px_rgba(0,240,255,0.25)] scale-105'
@@ -106,6 +108,12 @@ export default function GiftTray({ isOpen, onClose, userBalance = 0, recipientNa
             </div>
           </div>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl">
+            {error}
+          </div>
+        )}
 
         {/* Send Button */}
         <button

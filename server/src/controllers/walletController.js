@@ -1,105 +1,65 @@
-const GIFT_CATALOG = [
-  { id: 'rose', name: 'Cyber Rose', price: 1, icon: '🌹', color: '#FF2A7A' },
-  { id: 'heart', name: 'Neon Heart', price: 5, icon: '💖', color: '#FF2A7A' },
-  { id: 'flame', name: 'Vibe Flame', price: 10, icon: '🔥', color: '#FF9E00' },
-  { id: 'diamond', name: 'Hyper Diamond', price: 25, icon: '💎', color: '#00F0FF' },
-  { id: 'crown', name: 'Royal Crown', price: 75, icon: '👑', color: '#FFD166' }
-];
+const db = require('../config/db');
+const meetToEarn = require('../services/meetToEarn');
+const { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, roundVibe } = require('../config/economy');
 
-// In-memory wallet store (synchronized with Redis in production)
-const userWallets = new Map();
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const DEFAULT_WALLET = {
-  balance: 10.0,
-  m2eEarnedToday: 0.0,
-  activeSecondsToday: 0,
-  lastM2EReset: new Date().toDateString()
-};
-
-function getOrCreateWallet(userId) {
-  if (!userWallets.has(userId)) {
-    userWallets.set(userId, { ...DEFAULT_WALLET });
+class WalletError extends Error {
+  constructor(status, message, details = {}) {
+    super(message);
+    this.status = status;
+    this.details = details;
   }
-  const wallet = userWallets.get(userId);
-  
-  // Daily reset check
-  const today = new Date().toDateString();
-  if (wallet.lastM2EReset !== today) {
-    wallet.m2eEarnedToday = 0.0;
-    wallet.activeSecondsToday = 0;
-    wallet.lastM2EReset = today;
-  }
-  return wallet;
 }
 
 /**
  * GET /api/wallet/balance
  */
-exports.getBalance = (req, res) => {
-  const userId = req.user?.id || req.query.userId || 'guest_user';
-  const wallet = getOrCreateWallet(userId);
-  
-  return res.json({
-    success: true,
-    balance: parseFloat(wallet.balance.toFixed(2)),
-    m2eEarnedToday: parseFloat(wallet.m2eEarnedToday.toFixed(2)),
-    m2eDailyCap: 10.0,
-    m2eRatePer3Min: 0.10,
-    activeSecondsToday: wallet.activeSecondsToday
-  });
-};
+exports.getBalance = async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT vibe_balance, earned_balance, daily_earned_tokens, last_earned_date::text AS last_day
+       FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
 
-/**
- * POST /api/wallet/m2e-heartbeat
- * Recovers 0.10 VIBE for every 180s (3 mins) of active video time, max 10 VIBE/day
- */
-exports.processMeetToEarn = (req, res) => {
-  const userId = req.user?.id || req.body.userId || 'guest_user';
-  const { activeSeconds = 30 } = req.body; // Heartbeat interval (e.g. 30s)
+    const progress = await meetToEarn.getProgress(req.user.id);
 
-  const wallet = getOrCreateWallet(userId);
-  const DAILY_CAP = 10.0;
-  const REWARD_PER_CYCLE = 0.10;
-  const CYCLE_SECONDS = 180; // 3 minutes
-
-  const prevSeconds = wallet.activeSecondsToday;
-  wallet.activeSecondsToday += Number(activeSeconds);
-
-  // Check how many 3-minute boundaries were crossed
-  const prevCycles = Math.floor(prevSeconds / CYCLE_SECONDS);
-  const newCycles = Math.floor(wallet.activeSecondsToday / CYCLE_SECONDS);
-  const cyclesEarned = newCycles - prevCycles;
-
-  let rewardEarned = 0;
-  if (cyclesEarned > 0 && wallet.m2eEarnedToday < DAILY_CAP) {
-    const potentialReward = cyclesEarned * REWARD_PER_CYCLE;
-    const remainingCap = DAILY_CAP - wallet.m2eEarnedToday;
-    rewardEarned = Math.min(potentialReward, remainingCap);
-
-    wallet.m2eEarnedToday += rewardEarned;
-    wallet.balance += rewardEarned;
+    return res.json({
+      success: true,
+      balance: Number(user.vibe_balance),
+      earnedBalance: Number(user.earned_balance),
+      m2eEarnedToday: user.last_day === meetToEarn.todayUtc() ? Number(user.daily_earned_tokens) : 0,
+      m2eDailyCap: M2E.DAILY_CAP,
+      m2eRatePer3Min: M2E.REWARD_PER_CYCLE,
+      ...progress
+    });
+  } catch (err) {
+    console.error('Balance Error:', err);
+    res.status(500).json({ success: false, error: 'Server error fetching balance' });
   }
-
-  return res.json({
-    success: true,
-    rewardEarned: parseFloat(rewardEarned.toFixed(2)),
-    balance: parseFloat(wallet.balance.toFixed(2)),
-    m2eEarnedToday: parseFloat(wallet.m2eEarnedToday.toFixed(2)),
-    m2eDailyCap: DAILY_CAP,
-    secondsUntilNextReward: CYCLE_SECONDS - (wallet.activeSecondsToday % CYCLE_SECONDS)
-  });
 };
 
 /**
  * POST /api/wallet/send-gift
- * Handles live gifting with 50% platform rake
+ * Atomically debits the sender and credits the recipient's earned balance (50% platform rake)
  */
-exports.sendGift = (req, res) => {
-  const senderId = req.user?.id || req.body.senderId || 'guest_user';
+exports.sendGift = async (req, res) => {
+  const senderId = req.user.id;
   const { recipientId, giftId } = req.body;
 
   if (!recipientId || !giftId) {
     return res.status(400).json({ success: false, error: 'Recipient and giftId required' });
+  }
+  if (!UUID_PATTERN.test(recipientId)) {
+    return res.status(400).json({ success: false, error: 'Invalid recipient' });
+  }
+  if (recipientId === senderId) {
+    return res.status(400).json({ success: false, error: 'You cannot send a gift to yourself' });
   }
 
   const gift = GIFT_CATALOG.find(g => g.id === giftId);
@@ -107,33 +67,72 @@ exports.sendGift = (req, res) => {
     return res.status(404).json({ success: false, error: 'Gift item not found' });
   }
 
-  const senderWallet = getOrCreateWallet(senderId);
+  const recipientReceived = roundVibe(gift.price * GIFT_RECIPIENT_SHARE);
 
-  if (senderWallet.balance < gift.price) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Insufficient VIBE tokens',
-      required: gift.price,
-      currentBalance: senderWallet.balance
+  try {
+    const result = await db.withTransaction(async (client) => {
+      // Lock both wallets in a consistent order so crossing gifts cannot deadlock
+      const locked = await client.query(
+        'SELECT id, vibe_balance FROM users WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE',
+        [[senderId, recipientId]]
+      );
+      const sender = locked.rows.find(r => r.id === senderId);
+      const recipient = locked.rows.find(r => r.id === recipientId);
+
+      if (!sender) throw new WalletError(404, 'Sender not found');
+      if (!recipient) throw new WalletError(404, 'Recipient not found');
+      if (Number(sender.vibe_balance) < gift.price) {
+        throw new WalletError(400, 'Insufficient VIBE tokens', {
+          required: gift.price,
+          currentBalance: Number(sender.vibe_balance)
+        });
+      }
+
+      const debited = await client.query(
+        'UPDATE users SET vibe_balance = vibe_balance - $2 WHERE id = $1 RETURNING vibe_balance',
+        [senderId, gift.price]
+      );
+      await client.query(
+        'UPDATE users SET earned_balance = earned_balance + $2 WHERE id = $1',
+        [recipientId, recipientReceived]
+      );
+      const ledger = await client.query(
+        `INSERT INTO token_transactions (user_id, amount, transaction_type, metadata)
+         VALUES ($1, $2, 'SEND_GIFT', $3), ($4, $5, 'RECEIVE_GIFT', $6)
+         RETURNING id`,
+        [
+          senderId, -gift.price, { giftId: gift.id, recipientId },
+          recipientId, recipientReceived, { giftId: gift.id, senderId }
+        ]
+      );
+
+      return {
+        senderNewBalance: Number(debited.rows[0].vibe_balance),
+        transactionId: ledger.rows[0].id
+      };
     });
+
+    // Live notification to every socket the recipient has open
+    req.app.get('io')?.to(`user:${recipientId}`).emit('gift_received', {
+      gift,
+      from: { id: senderId, username: req.user.username },
+      recipientReceived
+    });
+
+    return res.json({
+      success: true,
+      gift,
+      cost: gift.price,
+      recipientReceived,
+      ...result
+    });
+  } catch (err) {
+    if (err instanceof WalletError) {
+      return res.status(err.status).json({ success: false, error: err.message, ...err.details });
+    }
+    console.error('Gift Error:', err);
+    res.status(500).json({ success: false, error: 'Server error sending gift' });
   }
-
-  // Deduct full amount from sender
-  senderWallet.balance -= gift.price;
-
-  // 50% Rake to Recipient
-  const recipientEarnings = gift.price * 0.50;
-  const recipientWallet = getOrCreateWallet(recipientId);
-  recipientWallet.balance += recipientEarnings;
-
-  return res.json({
-    success: true,
-    gift: gift,
-    cost: gift.price,
-    recipientReceived: recipientEarnings,
-    senderNewBalance: parseFloat(senderWallet.balance.toFixed(2)),
-    transactionId: `tx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
-  });
 };
 
 /**

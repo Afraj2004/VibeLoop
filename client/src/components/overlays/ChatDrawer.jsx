@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Send, MessageSquare } from 'lucide-react';
 
-export default function ChatDrawer({ isOpen, onClose, messages = [], onSendMessage, currentUserId }) {
+export default function ChatDrawer({ isOpen, onClose, messages = [], error, onSendMessage, currentUserId }) {
   const [inputText, setInputText] = useState('');
 
   if (!isOpen) return null;
@@ -68,6 +68,12 @@ export default function ChatDrawer({ isOpen, onClose, messages = [], onSendMessa
           })
         )}
       </div>
+
+      {error && (
+        <div className="mx-3 mb-2 p-2.5 bg-red-500/10 border border-red-500/30 text-red-400 text-[11px] rounded-xl">
+          {error}
+        </div>
+      )}
 
       {/* Input Form */}
       <form onSubmit={handleSend} className="p-3 border-t border-slate-800/80 bg-[#08090D]/50 flex items-center gap-2">

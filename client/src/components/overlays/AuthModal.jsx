@@ -21,9 +21,10 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl }
     setLoading(true);
 
     const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+    // Registration is only reachable after the app-wide age/terms gate has been accepted
     const payload = isLogin
       ? { email: formData.email, password: formData.password }
-      : formData;
+      : { ...formData, ageConfirmed: true, termsAccepted: true };
 
     try {
       const res = await fetch(`${backendUrl}${endpoint}`, {
@@ -185,7 +186,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl }
                 >
                   <option value="US">🇺🇸 Global / US</option>
                   <option value="IN">🇮🇳 India</option>
-                  <option value="UK">🇬🇧 UK</option>
+                  <option value="GB">🇬🇧 UK</option>
                   <option value="CA">🇨🇦 Canada</option>
                   <option value="DE">🇩🇪 Germany</option>
                   <option value="BR">🇧🇷 Brazil</option>

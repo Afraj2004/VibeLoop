@@ -1,3 +1,5 @@
+import { apiFetch } from './api.js';
+
 const FALLBACK_RTC_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -9,14 +11,10 @@ const FALLBACK_RTC_CONFIG = {
 /**
  * Fetches dynamic STUN/TURN ICE server list from backend API with ephemeral credentials
  */
-export async function getIceServerConfig() {
+export async function getIceServerConfig(token) {
   try {
-    const response = await fetch('/api/ice-servers');
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ICE servers: ${response.statusText}`);
-    }
-    const data = await response.json();
-    if (data.success && Array.isArray(data.iceServers)) {
+    const data = await apiFetch('/api/ice-servers', { token });
+    if (Array.isArray(data.iceServers)) {
       return {
         iceServers: data.iceServers,
         iceCandidatePoolSize: 10
