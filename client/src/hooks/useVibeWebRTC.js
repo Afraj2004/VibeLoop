@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import FALLBACK_RTC_CONFIG, { getIceServerConfig } from '../utils/rtcConfig.js';
+import FALLBACK_RTC_CONFIG, { getIceServerConfig, ICE_REFRESH_MS } from '../utils/rtcConfig.js';
 
 /**
  * Camera capture + RTCPeerConnection negotiation over the signaling socket.
@@ -56,12 +56,15 @@ export function useVibeWebRTC(socket, token, mediaEnabled = true) {
     };
   }, [mediaEnabled]);
 
-  // Fetch STUN/TURN credentials for this session
+  // Fetch STUN/TURN credentials for this session and keep them fresh (they are short-lived)
   useEffect(() => {
     if (!token) return;
-    getIceServerConfig(token).then((config) => {
+    const refresh = () => getIceServerConfig(token).then((config) => {
       iceConfigRef.current = config;
     });
+    refresh();
+    const interval = setInterval(refresh, ICE_REFRESH_MS);
+    return () => clearInterval(interval);
   }, [token]);
 
   const closePeerConnection = useCallback(() => {
