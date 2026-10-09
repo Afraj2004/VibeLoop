@@ -52,14 +52,14 @@ export default function HeaderBar({
         </div>
       </div>
 
-      {/* Center: Meet-to-Earn Progress */}
-      <div className="pointer-events-auto hidden md:flex items-center gap-3 bg-[#12151E]/90 backdrop-blur-xl border border-slate-800/80 px-4 py-1.5 rounded-2xl shadow-xl">
+      {/* Center: Meet-to-Earn Progress (compact below lg, own row on phones) */}
+      <div className="pointer-events-auto hidden sm:flex items-center gap-2 lg:gap-3 bg-[#12151E]/90 backdrop-blur-xl border border-slate-800/80 px-3 lg:px-4 py-1.5 rounded-2xl shadow-xl">
         <div className="flex items-center gap-1.5">
           <Sparkles size={14} className={isCallActive ? "text-[#FF2A7A] animate-spin-slow" : "text-slate-500"} />
-          <span className="text-xs font-bold text-slate-200">Meet-to-Earn</span>
+          <span className="hidden lg:inline text-xs font-bold text-slate-200">Meet-to-Earn</span>
         </div>
 
-        <div className="w-24 h-2 bg-[#08090D] rounded-full overflow-hidden border border-slate-800 relative">
+        <div className="w-14 lg:w-24 h-2 bg-[#08090D] rounded-full overflow-hidden border border-slate-800 relative">
           <div 
             className="h-full bg-gradient-to-r from-[#00F0FF] to-[#FF2A7A] transition-all duration-1000 ease-linear"
             style={{ width: `${isCapReached ? 100 : cycleProgress}%` }}
@@ -71,6 +71,19 @@ export default function HeaderBar({
           <span className="text-slate-600">/</span>
           <span>{m2eDailyCap.toFixed(0)} VIBE</span>
         </div>
+      </div>
+
+      <div className="pointer-events-auto sm:hidden absolute top-full left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#12151E]/90 backdrop-blur-xl border border-slate-800/80 px-3 py-1 rounded-2xl shadow-xl">
+        <Sparkles size={12} className={isCallActive ? "text-[#FF2A7A] animate-spin-slow" : "text-slate-500"} />
+        <div className="w-12 h-1.5 bg-[#08090D] rounded-full overflow-hidden border border-slate-800">
+          <div
+            className="h-full bg-gradient-to-r from-[#00F0FF] to-[#FF2A7A] transition-all duration-1000 ease-linear"
+            style={{ width: `${isCapReached ? 100 : cycleProgress}%` }}
+          />
+        </div>
+        <span className="text-[10px] font-mono text-slate-400">
+          <span className="text-[#00F0FF] font-bold">{m2eEarnedToday.toFixed(2)}</span>/{m2eDailyCap.toFixed(0)}
+        </span>
       </div>
 
       {/* Right: Wallet Balance & User Auth Pill */}
@@ -113,7 +126,7 @@ export default function HeaderBar({
         {/* Boost Button */}
         <button
           onClick={onOpenBoostModal}
-          className="hidden xs:flex items-center gap-1.5 bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] hover:opacity-90 text-slate-950 px-3 py-1.5 rounded-2xl text-xs font-extrabold shadow-[0_0_15px_rgba(255,42,122,0.3)] transition-all active:scale-95 cursor-pointer"
+          className="hidden md:flex items-center gap-1.5 bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] hover:opacity-90 text-slate-950 px-3 py-1.5 rounded-2xl text-xs font-extrabold shadow-[0_0_15px_rgba(255,42,122,0.3)] transition-all active:scale-95 cursor-pointer"
         >
           <Zap size={13} className="fill-slate-950" />
           <span>BOOST</span>
