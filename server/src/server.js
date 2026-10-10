@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 
 const apiRoutes = require('./routes/api');
+const { getHealth } = require('./controllers/healthController');
 const { registerSignaling } = require('./services/webrtcSignaling');
 
 const app = express();
@@ -47,10 +48,8 @@ app.get('/', (req, res) => {
 // API Routes
 app.use('/api', apiRoutes);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+// Health check endpoint: 200 only when Postgres and Redis both respond ("/" stays a plain liveness ping)
+app.get('/health', getHealth);
 
 // Socket.IO Signaling Server Setup
 const io = new Server(server, {
