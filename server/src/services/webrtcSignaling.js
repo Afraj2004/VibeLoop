@@ -16,8 +16,15 @@ function toPublicProfile(user) {
   return { id: user.id, username: user.username, country: user.country };
 }
 
+// Bans further out than this are treated as permanent in user-facing messages
+const PERMANENT_BAN_YEARS = 50;
+
 function suspensionMessage(bannedUntil) {
-  return `Your account is temporarily suspended after multiple community reports. You can match again after ${new Date(bannedUntil).toUTCString()}.`;
+  const until = new Date(bannedUntil);
+  if (until.getUTCFullYear() - new Date().getUTCFullYear() >= PERMANENT_BAN_YEARS) {
+    return 'Your account has been permanently suspended for violating the Community Guidelines.';
+  }
+  return `Your account is suspended for violating the Community Guidelines. You can match again after ${until.toUTCString()}.`;
 }
 
 // Mirrors Express's trust-proxy handling so socket reports carry the same client IP as REST calls
@@ -326,6 +333,17 @@ function registerSignaling(io) {
       }
     });
   });
+
+  /**
+   * Closes every socket a user has open (e.g. after account deletion); the
+   * disconnect handler ends calls and clears matchmaking state
+   */
+  function disconnectUser(userId) {
+    io.in(`user:${userId}`).disconnectSockets(true);
+  }
+
+  // Hooks for REST controllers (admin bans, account deletion)
+  return { enforceSuspension, disconnectUser };
 }
 
 module.exports = { registerSignaling };

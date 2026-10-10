@@ -70,7 +70,10 @@ export default function ConsentModal({ onAccept }) {
             I confirm I am <span className="font-bold text-white">18 years or older</span>.
           </ConsentCheckbox>
           <ConsentCheckbox checked={acceptsTerms} onChange={setAcceptsTerms}>
-            I agree to the Community Guidelines above and the VibeLoop Terms of Service.
+            I agree to the Community Guidelines above, the{' '}
+            <a href="/terms" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Terms of Service</a>
+            {' '}and the{' '}
+            <a href="/privacy" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Privacy Policy</a>.
           </ConsentCheckbox>
         </div>
 

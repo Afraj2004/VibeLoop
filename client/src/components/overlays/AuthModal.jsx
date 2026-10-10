@@ -215,6 +215,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl }
             )}
           </button>
         </form>
+
+        {!isLogin && (
+          <p className="mt-3 text-[10px] text-slate-500 text-center">
+            By creating an account you agree to the{' '}
+            <a href="/terms" target="_blank" rel="noreferrer" className="text-slate-300 hover:underline">Terms of Service</a>
+            {' '}and{' '}
+            <a href="/privacy" target="_blank" rel="noreferrer" className="text-slate-300 hover:underline">Privacy Policy</a>.
+          </p>
+        )}
       </div>
     </div>
   );
