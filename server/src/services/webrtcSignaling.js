@@ -5,6 +5,7 @@ const { saveAndDeliverMessage } = require('./chatService');
 const meetToEarn = require('./meetToEarn');
 const history = require('./history');
 const moderation = require('./moderation');
+const boost = require('./boost');
 const { consume } = require('../middlewares/rateLimiter');
 
 // Skip-spam guard: bots cycling the queue get cut off; humans rarely skip more than once every few seconds
@@ -12,8 +13,18 @@ const FIND_PARTNER_LIMIT = { limit: 40, windowSeconds: 60 };
 const CHAT_LIMIT = { limit: 15, windowSeconds: 10 };
 const REPORT_LIMIT = { limit: 10, windowSeconds: 60 * 60 };
 
-function toPublicProfile(user) {
-  return { id: user.id, username: user.username, country: user.country };
+/**
+ * What a matched partner learns about you. Your boost earns you a flame badge; the viewer's
+ * own boost reveals your gender to them before video connects.
+ */
+function toPublicProfile(user, { boosted = false, revealGender = false } = {}) {
+  return {
+    id: user.id,
+    username: user.username,
+    country: user.country,
+    boosted,
+    ...(revealGender && { gender: user.gender })
+  };
 }
 
 // Bans further out than this are treated as permanent in user-facing messages
@@ -140,12 +151,18 @@ function registerSignaling(io) {
     receiver.emit('match_found', {
       roomId,
       isInitiator: false,
-      peer: toPublicProfile(initiator.data.user)
+      peer: toPublicProfile(initiator.data.user, {
+        boosted: Boolean(initiator.data.boosted),
+        revealGender: Boolean(receiver.data.boosted)
+      })
     });
     initiator.emit('match_found', {
       roomId,
       isInitiator: true,
-      peer: toPublicProfile(receiver.data.user)
+      peer: toPublicProfile(receiver.data.user, {
+        boosted: Boolean(receiver.data.boosted),
+        revealGender: Boolean(initiator.data.boosted)
+      })
     });
   }
 
@@ -164,6 +181,9 @@ function registerSignaling(io) {
     moderation
       .hydrateSafetyState(user.id)
       .catch((err) => console.error('[VibeLoop Safety] hydrate failed:', err.message));
+    boost
+      .hydrateBoost(user.id)
+      .catch((err) => console.error('[VibeLoop Boost] hydrate failed:', err.message));
 
     // One matchmaking attempt in flight per socket; repeats are ignored until it settles
     let isFinding = false;
@@ -187,6 +207,9 @@ function registerSignaling(io) {
           socket.emit('match_error', { error: suspensionMessage(bannedUntil) });
           return;
         }
+
+        socket.data.boosted = Boolean(await boost.getBoostExpiry(user.id));
+        userState.boosted = socket.data.boosted;
 
         const { limit, windowSeconds } = FIND_PARTNER_LIMIT;
         const { allowed, retryAfter } = await consume(`find:${user.id}`, limit, windowSeconds);

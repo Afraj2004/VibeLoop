@@ -8,6 +8,7 @@ import ReportModal from './components/overlays/ReportModal.jsx';
 import FilterModal from './components/overlays/FilterModal.jsx';
 import AccountModal from './components/overlays/AccountModal.jsx';
 import WalletModal from './components/overlays/WalletModal.jsx';
+import BoostModal, { minutesLeft } from './components/overlays/BoostModal.jsx';
 import HistoryBar from './components/overlays/HistoryBar.jsx';
 import { useSocket } from './hooks/useSocket.js';
 import { useVibeWebRTC } from './hooks/useVibeWebRTC.js';
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 
 const DEFAULT_PREFERENCES = { targetGender: 'any', targetCountry: 'ALL' };
+const GENDER_LABEL = { female: 'Woman', male: 'Man', other: 'Other' };
 
 function loadJson(key) {
   try {
@@ -45,6 +47,9 @@ export default function App() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isWalletOpen, setIsWalletOpen] = useState(false);
+  const [isBoostOpen, setIsBoostOpen] = useState(false);
+  const [boostUntil, setBoostUntil] = useState(null);
+  const [boostPrice, setBoostPrice] = useState(10);
 
   // Chat & Economy
   const [messages, setMessages] = useState([]);
@@ -122,6 +127,8 @@ export default function App() {
     apiFetch('/api/wallet/balance', { token })
       .then((data) => {
         setWalletBalance(data.balance);
+        setBoostUntil(data.boostUntil);
+        if (data.boostPrice) setBoostPrice(data.boostPrice);
         setM2eEarned(data.m2eEarnedToday);
         setSecondsUntilReward(data.secondsUntilNextReward);
       })
@@ -338,7 +345,8 @@ export default function App() {
         currentUser={currentUser}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onLogout={handleLogout}
-        onOpenBoostModal={() => alert('VibeBoost Modal: 1-hour priority matching unlocked with 10 VIBE!')}
+        onOpenBoostModal={() => setIsBoostOpen(true)}
+        boostMinutesLeft={minutesLeft(boostUntil)}
         onOpenRechargeModal={() => setIsWalletOpen(true)}
       />
 
@@ -362,7 +370,7 @@ export default function App() {
               </h2>
               <p className="text-sm text-slate-400 mt-1 max-w-sm">
                 {isMatched && peer
-                  ? `Matched with ${peer.username}`
+                  ? `Matched with ${peer.username}${peer.gender ? ` · ${GENDER_LABEL[peer.gender]}` : ''}`
                   : 'Press START to instantly meet verified people around the globe. Earn VIBE tokens as you chat.'}
               </p>
             </div>
@@ -386,6 +394,22 @@ export default function App() {
           <Flag size={14} />
           <span>Report</span>
         </button>
+      )}
+
+      {/* Partner badges: their boost, and their gender if *you* are boosted */}
+      {isMatched && peer && (peer.boosted || peer.gender) && (
+        <div className="absolute top-32 left-4 sm:top-36 sm:left-6 z-30 flex flex-col items-start gap-1.5">
+          {peer.boosted && (
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] text-slate-950 text-[11px] font-extrabold shadow-lg">
+              🔥 Boosted
+            </span>
+          )}
+          {peer.gender && (
+            <span className="px-2.5 py-1 rounded-xl bg-[#12151E]/80 border border-[#FF7A00]/40 text-[#FF9E00] backdrop-blur-xl text-[11px] font-bold">
+              {GENDER_LABEL[peer.gender]}
+            </span>
+          )}
+        </div>
       )}
 
       {/* Draggable/Fixed Local PIP Camera */}
@@ -568,7 +592,29 @@ export default function App() {
       />
 
       {isWalletOpen && token && (
-        <WalletModal token={token} onClose={() => setIsWalletOpen(false)} />
+        <WalletModal
+          token={token}
+          onClose={() => setIsWalletOpen(false)}
+          onOpenBoost={() => {
+            setIsWalletOpen(false);
+            setIsBoostOpen(true);
+          }}
+        />
+      )}
+
+      {isBoostOpen && token && (
+        <BoostModal
+          token={token}
+          balance={walletBalance}
+          boostUntil={boostUntil}
+          price={boostPrice}
+          onClose={() => setIsBoostOpen(false)}
+          onActivated={({ balance, boostUntil: until }) => {
+            setWalletBalance(balance);
+            setBoostUntil(until);
+            showNotice('VibeBoost active! You get priority on your next matches.');
+          }}
+        />
       )}
 
       {isAccountOpen && (

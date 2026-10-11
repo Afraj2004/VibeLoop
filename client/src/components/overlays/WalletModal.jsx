@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Coins, Sparkles, Gift, Wallet, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { X, Coins, Sparkles, Gift, Wallet, ArrowUpRight, ArrowDownLeft, Zap } from 'lucide-react';
 import { apiFetch } from '../../utils/api.js';
 
 function describe(tx) {
@@ -9,6 +9,8 @@ function describe(tx) {
       return { label: 'Meet-to-Earn reward', Icon: Sparkles, tone: 'text-[#00F0FF]' };
     case 'SEND_GIFT':
       return { label: `Sent ${gift} to ${tx.counterparty || 'a deleted user'}`, Icon: ArrowUpRight, tone: 'text-[#FF2A7A]' };
+    case 'PURCHASE_BOOST':
+      return { label: 'VibeBoost (1 hour)', Icon: Zap, tone: 'text-[#FF7A00]' };
     case 'RECEIVE_GIFT':
       return { label: `Received ${gift} from ${tx.counterparty || 'a deleted user'}`, Icon: ArrowDownLeft, tone: 'text-[#FFD166]', earned: true };
     default:
@@ -23,7 +25,7 @@ function formatWhen(value) {
 /**
  * Balances (spendable vs. earned from gifts), today's Meet-to-Earn progress and recent transactions
  */
-export default function WalletModal({ token, onClose }) {
+export default function WalletModal({ token, onClose, onOpenBoost }) {
   const [wallet, setWallet] = useState(null);
   const [transactions, setTransactions] = useState(null);
   const [error, setError] = useState('');
@@ -105,12 +107,21 @@ export default function WalletModal({ token, onClose }) {
               </div>
             </div>
 
-            <button
-              disabled
-              className="w-full mb-5 py-2.5 rounded-2xl border border-dashed border-slate-700 text-slate-500 font-bold text-xs cursor-not-allowed"
-            >
-              Top up VIBE · coming soon
-            </button>
+            <div className="flex gap-2 mb-5">
+              <button
+                onClick={onOpenBoost}
+                className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Zap size={13} className="fill-slate-950" />
+                <span>VibeBoost</span>
+              </button>
+              <button
+                disabled
+                className="flex-1 py-2.5 rounded-2xl border border-dashed border-slate-700 text-slate-500 font-bold text-xs cursor-not-allowed"
+              >
+                Top up · coming soon
+              </button>
+            </div>
           </>
         )}
 

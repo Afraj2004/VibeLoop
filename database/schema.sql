@@ -125,3 +125,6 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
     details JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- VibeBoost: priority matching until this time
+ALTER TABLE users ADD COLUMN IF NOT EXISTS boost_until TIMESTAMP WITH TIME ZONE;
