@@ -6,6 +6,7 @@ import AuthModal from './components/overlays/AuthModal.jsx';
 import ConsentModal, { TERMS_VERSION } from './components/overlays/ConsentModal.jsx';
 import ReportModal from './components/overlays/ReportModal.jsx';
 import FilterModal from './components/overlays/FilterModal.jsx';
+import AccountModal from './components/overlays/AccountModal.jsx';
 import HistoryBar from './components/overlays/HistoryBar.jsx';
 import { useSocket } from './hooks/useSocket.js';
 import { useVibeWebRTC } from './hooks/useVibeWebRTC.js';
@@ -41,6 +42,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
 
   // Chat & Economy
   const [messages, setMessages] = useState([]);
@@ -231,6 +233,13 @@ export default function App() {
   const handleLogout = () => {
     stop();
     clearSession();
+  };
+
+  // The server already closed our sockets; a fresh guest session is created automatically
+  const handleAccountDeleted = () => {
+    setIsAccountOpen(false);
+    clearSession();
+    showNotice('Your account and data have been deleted.');
   };
 
   const toggleVideo = () => {
@@ -548,6 +557,22 @@ export default function App() {
         backendUrl={BACKEND_URL}
         onAuthSuccess={persistSession}
       />
+
+      {isAccountOpen && (
+        <AccountModal
+          currentUser={currentUser}
+          token={token}
+          onClose={() => setIsAccountOpen(false)}
+          onDeleted={handleAccountDeleted}
+        />
+      )}
+
+      {/* Legal & data links */}
+      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-40 flex gap-3 text-[10px] text-slate-600 whitespace-nowrap">
+        <a href="/terms" target="_blank" rel="noreferrer" className="hover:text-slate-300">Terms</a>
+        <a href="/privacy" target="_blank" rel="noreferrer" className="hover:text-slate-300">Privacy</a>
+        <button onClick={() => setIsAccountOpen(true)} className="hover:text-slate-300 cursor-pointer">Your account &amp; data</button>
+      </div>
 
       {!hasConsented && <ConsentModal onAccept={handleConsent} />}
 

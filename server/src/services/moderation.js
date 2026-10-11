@@ -41,11 +41,16 @@ async function blockUser(blockerId, blockedId) {
   );
 }
 
-async function banUser(userId) {
-  const until = new Date(Date.now() + BAN_SECONDS * 1000);
-  await redis.set(banKey(userId), until.toISOString(), 'EX', BAN_SECONDS);
+async function banUser(userId, seconds = BAN_SECONDS) {
+  const until = new Date(Date.now() + seconds * 1000);
+  await redis.set(banKey(userId), until.toISOString(), 'EX', seconds);
   await db.query('UPDATE users SET banned_until = $2 WHERE id = $1', [userId, until]);
   return until;
+}
+
+async function unbanUser(userId) {
+  await redis.del(banKey(userId));
+  await db.query('UPDATE users SET banned_until = NULL WHERE id = $1', [userId]);
 }
 
 /**
@@ -85,5 +90,7 @@ module.exports = {
   hydrateSafetyState,
   blockUser,
   fileReport,
+  banUser,
+  unbanUser,
   getBanExpiry
 };

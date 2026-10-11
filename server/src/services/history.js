@@ -72,6 +72,10 @@ async function removeEntry(userId, peerId) {
     .exec();
 }
 
+async function clearHistory(userId) {
+  await redis.del(historyKey(userId), detailsKey(userId));
+}
+
 /**
  * Most recent contacts first
  */
@@ -83,4 +87,4 @@ async function getHistory(userId) {
   return cards.filter(Boolean).map((card) => JSON.parse(card));
 }
 
-module.exports = { MIN_CALL_SECONDS, recordCall, removeEntry, getHistory };
+module.exports = { MIN_CALL_SECONDS, recordCall, removeEntry, clearHistory, getHistory };

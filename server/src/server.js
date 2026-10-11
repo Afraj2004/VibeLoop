@@ -25,7 +25,7 @@ const allowedOrigins = process.env.CLIENT_ORIGINS
 
 app.use(cors({
   origin: allowedOrigins,
-  methods: ['GET', 'POST', 'PATCH']
+  methods: ['GET', 'POST', 'PATCH', 'DELETE']
 }));
 
 app.use(express.json({ limit: '16kb' }));
@@ -61,10 +61,11 @@ const io = new Server(server, {
   }
 });
 
-registerSignaling(io);
+const signaling = registerSignaling(io);
 
 // Lets REST controllers push real-time events (e.g. gift notifications)
 app.set('io', io);
+app.set('signaling', signaling);
 
 const PORT = process.env.PORT || 5000;
 

@@ -107,3 +107,21 @@ END $$;
 
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_messages_chat_pair ON messages(sender_id, recipient_id, created_at DESC);
+
+-- Admins (grant with: UPDATE users SET is_admin = TRUE WHERE email = 'you@example.com';)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Manual review state for reports
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_reports_open ON reports(reported_id) WHERE reviewed_at IS NULL;
+
+-- Audit trail of admin decisions (user_id has no FK so the record survives account deletion)
+CREATE TABLE IF NOT EXISTS moderation_actions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    user_id UUID NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    details JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
