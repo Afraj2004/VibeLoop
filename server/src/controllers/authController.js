@@ -75,6 +75,8 @@ exports.createGuest = async (req, res) => {
 
 /**
  * POST /api/auth/register
+ * Called from a guest session (Authorization header), the guest row itself is upgraded,
+ * so the VIBE balance, history, contacts and blocks carry over to the new account.
  */
 exports.register = async (req, res) => {
   if (!hasConsent(req.body)) {
@@ -87,12 +89,13 @@ exports.register = async (req, res) => {
   }
 
   const { username, email, password, gender, country } = req.body;
+  const guestId = req.user?.isGuest ? req.user.id : null;
 
   try {
-    // Check if user exists
+    // Check if user exists (the upgrading guest's own row does not count)
     const userExists = await db.query(
-      'SELECT id FROM users WHERE email = $1 OR username = $2',
-      [email, username]
+      'SELECT id FROM users WHERE (email = $1 OR username = $2) AND id IS DISTINCT FROM $3',
+      [email, username, guestId]
     );
 
     if (userExists.rows.length > 0) {
@@ -102,6 +105,23 @@ exports.register = async (req, res) => {
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
+
+    if (guestId) {
+      const upgraded = await db.query(
+        `UPDATE users
+         SET username = $2, email = $3, password_hash = $4, gender = $5, country_code = $6,
+             is_guest = FALSE, age_confirmed_at = NOW(), terms_accepted_at = NOW(), terms_version = $7
+         WHERE id = $1 AND is_guest = TRUE
+         RETURNING ${USER_COLUMNS}`,
+        [guestId, username, email, passwordHash, gender || 'other', country || 'ALL', TERMS_VERSION]
+      );
+
+      // Falls through to a fresh account if the guest row no longer exists
+      if (upgraded.rows[0]) {
+        const user = upgraded.rows[0];
+        return res.status(201).json({ success: true, upgraded: true, token: signToken(user), user: toPublicUser(user) });
+      }
+    }
 
     // Insert user
     const newUser = await db.query(

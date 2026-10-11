@@ -8,13 +8,19 @@ const accountController = require('../controllers/accountController');
 const adminController = require('../controllers/adminController');
 const requireAdmin = require('../middlewares/requireAdmin');
 const auth = require('../middlewares/auth');
+const optionalAuth = require('../middlewares/optionalAuth');
 const { rateLimit } = require('../middlewares/rateLimiter');
 
 const HOUR = 60 * 60;
 
 // Authentication
 router.post('/auth/guest', rateLimit({ name: 'guest', limit: 20, windowSeconds: HOUR }), authController.createGuest);
-router.post('/auth/register', rateLimit({ name: 'register', limit: 5, windowSeconds: HOUR }), authController.register);
+router.post(
+  '/auth/register',
+  rateLimit({ name: 'register', limit: 5, windowSeconds: HOUR }),
+  optionalAuth,
+  authController.register
+);
 router.post('/auth/login', rateLimit({ name: 'login', limit: 10, windowSeconds: 15 * 60 }), authController.login);
 router.get('/auth/me', auth, authController.getMe);
 router.patch(
@@ -57,6 +63,7 @@ router.get(
 
 // Economy routes (Meet-to-Earn accrues over the signaling socket from server-measured call time)
 router.get('/wallet/balance', auth, walletController.getBalance);
+router.get('/wallet/transactions', auth, walletController.getTransactions);
 router.get('/wallet/gifts', walletController.getGifts);
 router.post(
   '/wallet/send-gift',
