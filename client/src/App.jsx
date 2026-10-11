@@ -272,11 +272,15 @@ export default function App() {
     }
   };
 
+  // Gender filters are a VibeBoost perk (the server enforces this too); saved choices return with a boost
+  const isBoosted = minutesLeft(boostUntil) > 0;
+  const searchPreferences = isBoosted ? preferences : { ...preferences, targetGender: 'any' };
+
   const handlePrimaryAction = () => {
     if (status === 'searching') {
       stop();
     } else {
-      findPartner(preferences);
+      findPartner(searchPreferences);
     }
   };
 
@@ -299,13 +303,13 @@ export default function App() {
   const handleReport = (reason, details) => {
     setIsReportOpen(false);
     socket.emit('report_partner', { reason, details });
-    findPartner(preferences);
+    findPartner(searchPreferences);
   };
 
   const handleBlock = () => {
     setIsReportOpen(false);
     socket.emit('block_partner');
-    findPartner(preferences);
+    findPartner(searchPreferences);
   };
 
   const profile = {
@@ -579,6 +583,11 @@ export default function App() {
           profile={profile}
           onClose={() => setIsFilterOpen(false)}
           onSave={handleSaveFilters}
+          genderLocked={!isBoosted}
+          onUnlockGender={() => {
+            setIsFilterOpen(false);
+            setIsBoostOpen(true);
+          }}
         />
       )}
 
