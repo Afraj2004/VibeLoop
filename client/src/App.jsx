@@ -7,6 +7,7 @@ import ConsentModal, { TERMS_VERSION } from './components/overlays/ConsentModal.
 import ReportModal from './components/overlays/ReportModal.jsx';
 import FilterModal from './components/overlays/FilterModal.jsx';
 import AccountModal from './components/overlays/AccountModal.jsx';
+import WalletModal from './components/overlays/WalletModal.jsx';
 import HistoryBar from './components/overlays/HistoryBar.jsx';
 import { useSocket } from './hooks/useSocket.js';
 import { useVibeWebRTC } from './hooks/useVibeWebRTC.js';
@@ -43,6 +44,7 @@ export default function App() {
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isWalletOpen, setIsWalletOpen] = useState(false);
 
   // Chat & Economy
   const [messages, setMessages] = useState([]);
@@ -235,6 +237,11 @@ export default function App() {
     clearSession();
   };
 
+  const handleAuthSuccess = (user, tok, upgraded) => {
+    persistSession(user, tok);
+    if (upgraded) showNotice('Account created. Your VIBE, history and contacts came with you.');
+  };
+
   // The server already closed our sockets; a fresh guest session is created automatically
   const handleAccountDeleted = () => {
     setIsAccountOpen(false);
@@ -332,7 +339,7 @@ export default function App() {
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onLogout={handleLogout}
         onOpenBoostModal={() => alert('VibeBoost Modal: 1-hour priority matching unlocked with 10 VIBE!')}
-        onOpenRechargeModal={() => alert('VIBE Store: Instant wallet refills coming next!')}
+        onOpenRechargeModal={() => setIsWalletOpen(true)}
       />
 
       {/* Main Remote Video Stage */}
@@ -555,8 +562,14 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         backendUrl={BACKEND_URL}
-        onAuthSuccess={persistSession}
+        token={token}
+        isGuest={!currentUser || currentUser.isGuest}
+        onAuthSuccess={handleAuthSuccess}
       />
+
+      {isWalletOpen && token && (
+        <WalletModal token={token} onClose={() => setIsWalletOpen(false)} />
+      )}
 
       {isAccountOpen && (
         <AccountModal

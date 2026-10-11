@@ -136,6 +136,41 @@ exports.sendGift = async (req, res) => {
 };
 
 /**
+ * GET /api/wallet/transactions
+ * Most recent ledger entries (max 50), with gift names and counterparty usernames resolved
+ */
+exports.getTransactions = async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT t.id, t.amount, t.transaction_type, t.metadata, t.created_at, c.username AS counterparty
+       FROM token_transactions t
+       LEFT JOIN users c ON c.id = COALESCE(t.metadata->>'recipientId', t.metadata->>'senderId')::uuid
+       WHERE t.user_id = $1
+       ORDER BY t.created_at DESC
+       LIMIT 50`,
+      [req.user.id]
+    );
+
+    const transactions = rows.map((row) => {
+      const gift = GIFT_CATALOG.find((g) => g.id === row.metadata?.giftId);
+      return {
+        id: row.id,
+        type: row.transaction_type,
+        amount: Number(row.amount),
+        createdAt: row.created_at,
+        gift: gift ? { name: gift.name, icon: gift.icon } : null,
+        counterparty: row.counterparty || null
+      };
+    });
+
+    res.json({ success: true, transactions });
+  } catch (err) {
+    console.error('Transactions Error:', err);
+    res.status(500).json({ success: false, error: 'Server error fetching transactions' });
+  }
+};
+
+/**
  * GET /api/wallet/gifts
  */
 exports.getGifts = (req, res) => {

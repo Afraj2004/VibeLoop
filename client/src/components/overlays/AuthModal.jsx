@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, User, Mail, Lock, Sparkles, LogIn, UserPlus } from 'lucide-react';
 
-export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl }) {
+export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest }) {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     username: '',
@@ -29,7 +29,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl }
     try {
       const res = await fetch(`${backendUrl}${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // Registering from a guest session upgrades that guest, keeping its VIBE, history and contacts
+          ...(!isLogin && isGuest && token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -41,7 +45,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl }
       // Save token and notify parent
       localStorage.setItem('vibeloop_token', data.token);
       localStorage.setItem('vibeloop_user', JSON.stringify(data.user));
-      onAuthSuccess(data.user, data.token);
+      onAuthSuccess(data.user, data.token, Boolean(data.upgraded));
       onClose();
     } catch (err) {
       setError(err.message);
@@ -68,7 +72,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl }
                 {isLogin ? 'Welcome Back' : 'Create VibeLoop Account'}
               </h3>
               <p className="text-xs text-slate-400">
-                {isLogin ? 'Login to save your tokens & history' : 'Join and receive 10 bonus VIBE'}
+                {isLogin
+                  ? 'Sign in to an existing account'
+                  : isGuest
+                    ? 'Keep your VIBE, history and contacts from this session'
+                    : 'Join and receive 10 bonus VIBE'}
               </p>
             </div>
           </div>
@@ -215,6 +223,12 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl }
             )}
           </button>
         </form>
+
+        {isLogin && isGuest && (
+          <p className="mt-3 text-[10px] text-slate-500 text-center">
+            Signing in switches to that account. This guest session's VIBE stays with the guest; register instead to keep it.
+          </p>
+        )}
 
         {!isLogin && (
           <p className="mt-3 text-[10px] text-slate-500 text-center">
