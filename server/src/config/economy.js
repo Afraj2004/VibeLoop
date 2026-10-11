@@ -18,6 +18,12 @@ const M2E = {
   DAILY_CAP: 10.0
 };
 
+// VibeBoost: priority matching + flame badge + see your match's gender early
+const BOOST = {
+  PRICE: 10,
+  DURATION_SECONDS: 60 * 60
+};
+
 const roundVibe = (amount) => Math.round(amount * 100) / 100;
 
-module.exports = { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, roundVibe };
+module.exports = { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, roundVibe };

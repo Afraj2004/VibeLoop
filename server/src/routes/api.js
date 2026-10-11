@@ -66,6 +66,12 @@ router.get('/wallet/balance', auth, walletController.getBalance);
 router.get('/wallet/transactions', auth, walletController.getTransactions);
 router.get('/wallet/gifts', walletController.getGifts);
 router.post(
+  '/wallet/boost',
+  auth,
+  rateLimit({ name: 'boost', limit: 10, windowSeconds: HOUR, by: 'user' }),
+  walletController.purchaseBoost
+);
+router.post(
   '/wallet/send-gift',
   auth,
   rateLimit({ name: 'gift', limit: 30, windowSeconds: 60, by: 'user' }),

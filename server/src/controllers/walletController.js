@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const meetToEarn = require('../services/meetToEarn');
-const { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, roundVibe } = require('../config/economy');
+const boost = require('../services/boost');
+const { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, roundVibe } = require('../config/economy');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -27,7 +28,10 @@ exports.getBalance = async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    const progress = await meetToEarn.getProgress(req.user.id);
+    const [progress, boostUntil] = await Promise.all([
+      meetToEarn.getProgress(req.user.id),
+      boost.getBoostExpiry(req.user.id)
+    ]);
 
     return res.json({
       success: true,
@@ -36,6 +40,8 @@ exports.getBalance = async (req, res) => {
       m2eEarnedToday: user.last_day === meetToEarn.todayUtc() ? Number(user.daily_earned_tokens) : 0,
       m2eDailyCap: M2E.DAILY_CAP,
       m2eRatePer3Min: M2E.REWARD_PER_CYCLE,
+      boostUntil,
+      boostPrice: BOOST.PRICE,
       ...progress
     });
   } catch (err) {
@@ -167,6 +173,23 @@ exports.getTransactions = async (req, res) => {
   } catch (err) {
     console.error('Transactions Error:', err);
     res.status(500).json({ success: false, error: 'Server error fetching transactions' });
+  }
+};
+
+/**
+ * POST /api/wallet/boost
+ * Spends BOOST.PRICE VIBE for an hour of VibeBoost (stacks onto an active boost)
+ */
+exports.purchaseBoost = async (req, res) => {
+  try {
+    const { balance, boostUntil } = await boost.purchaseBoost(req.user.id);
+    res.json({ success: true, balance, boostUntil, price: BOOST.PRICE });
+  } catch (err) {
+    if (err instanceof boost.BoostError) {
+      return res.status(err.status).json({ success: false, error: err.message, ...err.details });
+    }
+    console.error('Boost Error:', err);
+    res.status(500).json({ success: false, error: 'Server error activating VibeBoost' });
   }
 };
 

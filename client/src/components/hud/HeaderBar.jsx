@@ -12,7 +12,8 @@ export default function HeaderBar({
   onOpenAuthModal,
   onLogout,
   onOpenBoostModal,
-  onOpenRechargeModal
+  onOpenRechargeModal,
+  boostMinutesLeft = 0
 }) {
   const [countdown, setCountdown] = useState(secondsUntilNextReward);
 
@@ -129,7 +130,7 @@ export default function HeaderBar({
           className="hidden md:flex items-center gap-1.5 bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] hover:opacity-90 text-slate-950 px-3 py-1.5 rounded-2xl text-xs font-extrabold shadow-[0_0_15px_rgba(255,42,122,0.3)] transition-all active:scale-95 cursor-pointer"
         >
           <Zap size={13} className="fill-slate-950" />
-          <span>BOOST</span>
+          <span>{boostMinutesLeft > 0 ? `${boostMinutesLeft}m` : 'BOOST'}</span>
         </button>
       </div>
 

@@ -17,6 +17,7 @@ stubModule('config/db.js', {
     const sql = text.replace(/\s+/g, ' ');
     if (sql.includes('SELECT blocked_id FROM blocks')) return { rows: [] };
     if (sql.includes('SELECT banned_until FROM users')) return { rows: [] };
+    if (sql.includes('SELECT boost_until FROM users')) return { rows: [] };
     if (sql.includes('INSERT INTO blocks')) { blocks.push(params); return { rows: [] }; }
     if (sql.includes('INSERT INTO reports')) {
       reports.push({ reporter: params[0], reported: params[1], reason: params[2], ip: params[4] });
