@@ -24,6 +24,13 @@ const BOOST = {
   DURATION_SECONDS: 60 * 60
 };
 
+// VIBE top-up packs (prices in INR, GST inclusive). Sample values: tune before going live.
+const VIBE_PACKAGES = [
+  { id: 'starter', vibe: 50, priceInr: 49 },
+  { id: 'popular', vibe: 120, priceInr: 99, tag: 'Most popular' },
+  { id: 'mega', vibe: 300, priceInr: 199, tag: 'Best value' }
+];
+
 const roundVibe = (amount) => Math.round(amount * 100) / 100;
 
-module.exports = { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, roundVibe };
+module.exports = { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, VIBE_PACKAGES, roundVibe };

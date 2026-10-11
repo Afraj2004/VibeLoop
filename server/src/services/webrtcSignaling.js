@@ -211,6 +211,9 @@ function registerSignaling(io) {
         socket.data.boosted = Boolean(await boost.getBoostExpiry(user.id));
         userState.boosted = socket.data.boosted;
 
+        // Gender filters are a VibeBoost perk; without a boost, match with everyone
+        if (!socket.data.boosted) userState.targetGender = 'any';
+
         const { limit, windowSeconds } = FIND_PARTNER_LIMIT;
         const { allowed, retryAfter } = await consume(`find:${user.id}`, limit, windowSeconds);
         if (!allowed) {

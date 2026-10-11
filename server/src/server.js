@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 
 const apiRoutes = require('./routes/api');
+const webhookRoutes = require('./routes/webhooks');
 const { getHealth } = require('./controllers/healthController');
 const { registerSignaling } = require('./services/webrtcSignaling');
 
@@ -27,6 +28,9 @@ app.use(cors({
   origin: allowedOrigins,
   methods: ['GET', 'POST', 'PATCH', 'DELETE']
 }));
+
+// Webhooks verify signatures over the raw body, so they are mounted before the JSON parser
+app.use('/api/webhooks', webhookRoutes);
 
 app.use(express.json({ limit: '16kb' }));
 

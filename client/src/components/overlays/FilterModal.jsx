@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, SlidersHorizontal } from 'lucide-react';
+import { X, SlidersHorizontal, Lock, Zap } from 'lucide-react';
 import { COUNTRIES, flagEmoji } from '../../utils/countries.js';
 
 const TARGET_GENDERS = [
@@ -51,7 +51,7 @@ function CountrySelect({ value, onChange, anyLabel }) {
 /**
  * Who to meet (applied on the next search) and who you are (lets others' filters find you)
  */
-export default function FilterModal({ preferences, profile, onClose, onSave }) {
+export default function FilterModal({ preferences, profile, genderLocked = false, onUnlockGender, onClose, onSave }) {
   const [targetGender, setTargetGender] = useState(preferences.targetGender);
   const [targetCountry, setTargetCountry] = useState(preferences.targetCountry);
   const [gender, setGender] = useState(profile.gender);
@@ -96,7 +96,24 @@ export default function FilterModal({ preferences, profile, onClose, onSave }) {
 
         <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">I want to meet</h4>
         <div className="space-y-2 mb-5">
-          <SegmentedControl options={TARGET_GENDERS} value={targetGender} onChange={setTargetGender} />
+          {genderLocked ? (
+            <div className="flex items-center justify-between gap-3 bg-[#08090D] border border-slate-800 rounded-2xl px-3 py-2.5">
+              <span className="flex items-center gap-1.5 text-xs text-slate-400">
+                <Lock size={13} className="text-[#FF7A00]" />
+                Gender filter is a VibeBoost perk
+              </span>
+              <button
+                type="button"
+                onClick={onUnlockGender}
+                className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] text-slate-950 text-[11px] font-extrabold cursor-pointer"
+              >
+                <Zap size={11} className="fill-slate-950" />
+                <span>Boost</span>
+              </button>
+            </div>
+          ) : (
+            <SegmentedControl options={TARGET_GENDERS} value={targetGender} onChange={setTargetGender} />
+          )}
           <CountrySelect value={targetCountry} onChange={setTargetCountry} anyLabel="Anywhere in the world" />
         </div>
 

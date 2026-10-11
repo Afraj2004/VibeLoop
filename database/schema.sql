@@ -128,3 +128,19 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
 
 -- VibeBoost: priority matching until this time
 ALTER TABLE users ADD COLUMN IF NOT EXISTS boost_until TIMESTAMP WITH TIME ZONE;
+
+-- VIBE purchases through Razorpay (one row per order; credited exactly once when captured)
+CREATE TABLE IF NOT EXISTS payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    package_id VARCHAR(32) NOT NULL,
+    vibe_amount NUMERIC(12, 2) NOT NULL,
+    amount_paise INTEGER NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+    razorpay_order_id VARCHAR(64) UNIQUE NOT NULL,
+    razorpay_payment_id VARCHAR(64),
+    status VARCHAR(16) NOT NULL DEFAULT 'created' CHECK (status IN ('created', 'paid', 'failed')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    paid_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, created_at DESC);

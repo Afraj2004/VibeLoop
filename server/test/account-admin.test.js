@@ -165,7 +165,7 @@ describe('data export', () => {
     const result = await call(account.exportData, { user: { id: GUEST } });
     assert.strictEqual(result.status, 200);
     assert.match(result.headers['Content-Disposition'], /attachment; filename="vibeloop-data-\d{4}-\d{2}-\d{2}\.json"/);
-    for (const key of ['profile', 'transactions', 'matchHistory', 'recentContacts', 'messages', 'reportsYouFiled', 'usersYouBlocked']) {
+    for (const key of ['profile', 'transactions', 'matchHistory', 'recentContacts', 'messages', 'reportsYouFiled', 'usersYouBlocked', 'purchases']) {
       assert.ok(key in result.body, `export includes ${key}`);
     }
   });

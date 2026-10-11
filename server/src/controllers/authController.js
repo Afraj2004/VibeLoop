@@ -11,7 +11,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COUNTRY_PATTERN = /^[A-Z]{2,3}$/;
 
 // Bump when the Terms / Community Guidelines change; stored with each acceptance
-const TERMS_VERSION = '2026-10';
+const TERMS_VERSION = '2026-10-11';
 const CONSENT_ERROR = 'You must confirm you are 18 or older and accept the Terms to use VibeLoop';
 
 const hasConsent = (body) => body?.ageConfirmed === true && body?.termsAccepted === true;

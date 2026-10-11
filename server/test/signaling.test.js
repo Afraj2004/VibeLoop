@@ -80,7 +80,7 @@ describe('signaling', () => {
   it('never matches a candidate whose own filters reject the searcher', async () => {
     C = await app.connect({ gender: 'male', country: 'US' });
     const D = await app.connect({ gender: 'male', country: 'US' });
-    D.emit('find_partner', { targetGender: 'female' });
+    D.emit('find_partner', { targetCountry: 'IN' });
     await sleep(100);
 
     let cMatched = false;

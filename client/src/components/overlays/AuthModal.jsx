@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, User, Mail, Lock, Sparkles, LogIn, UserPlus } from 'lucide-react';
 
-export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest }) {
+export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest, initialMode = 'login' }) {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     username: '',
@@ -12,6 +12,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Each time the modal opens, start on the tab the caller asked for
+  useEffect(() => {
+    if (isOpen) setIsLogin(initialMode === 'login');
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 

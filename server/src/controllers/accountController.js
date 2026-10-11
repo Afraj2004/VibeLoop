@@ -11,7 +11,7 @@ exports.exportData = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const [profile, transactions, matches, messages, reportsFiled, blocks, recentContacts] = await Promise.all([
+    const [profile, transactions, matches, messages, reportsFiled, blocks, purchases, recentContacts] = await Promise.all([
       db.query(
         `SELECT id, username, email, gender, country_code, is_guest, vibe_balance, earned_balance,
                 daily_earned_tokens, last_earned_date, age_confirmed_at, terms_accepted_at,
@@ -50,6 +50,11 @@ exports.exportData = async (req, res) => {
          WHERE b.blocker_id = $1 ORDER BY b.created_at DESC`,
         [userId]
       ),
+      db.query(
+        `SELECT package_id, vibe_amount, amount_paise, currency, status, created_at, paid_at
+         FROM payments WHERE user_id = $1 ORDER BY created_at DESC`,
+        [userId]
+      ),
       history.getHistory(userId)
     ]);
 
@@ -69,7 +74,8 @@ exports.exportData = async (req, res) => {
       recentContacts,
       messages: messages.rows,
       reportsYouFiled: reportsFiled.rows,
-      usersYouBlocked: blocks.rows
+      usersYouBlocked: blocks.rows,
+      purchases: purchases.rows
     });
   } catch (err) {
     console.error('Data Export Error:', err);

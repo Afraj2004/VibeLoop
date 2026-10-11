@@ -123,6 +123,35 @@ describe('boosted matchmaking', () => {
     await sleep(100);
   });
 
+  it('ignores gender filters without a boost and honours them with one', async () => {
+    // Unboosted: a man asking for women still gets matched with the waiting man
+    const waitingMan = await app.connect({ gender: 'male', country: 'US' });
+    waitingMan.emit('find_partner', {});
+    await sleep(60);
+    const unboosted = await app.connect({ gender: 'male', country: 'US' });
+    const [match] = await Promise.all([
+      once(unboosted, 'match_found'),
+      unboosted.emit('find_partner', { targetGender: 'female' })
+    ]);
+    assert.strictEqual(match.peer.id, waitingMan.userId);
+    [waitingMan, unboosted].forEach((sock) => sock.close());
+    await sleep(80);
+
+    // Boosted: the same request is honoured, so the waiting man is not offered
+    const otherMan = await app.connect({ gender: 'male', country: 'US' });
+    otherMan.emit('find_partner', {});
+    await sleep(60);
+    const booster = await app.connect({ gender: 'male', country: 'US' });
+    await boostUser(booster);
+    let boosterMatched = false;
+    booster.once('match_found', () => { boosterMatched = true; });
+    booster.emit('find_partner', { targetGender: 'female' });
+    await sleep(200);
+    assert.strictEqual(boosterMatched, false);
+    [otherMan, booster].forEach((sock) => sock.close());
+    await sleep(80);
+  });
+
   it('still respects filters: a boosted user the searcher does not want is skipped', async () => {
     const normal = await app.connect({ gender: 'female', country: 'US' });
     normal.emit('find_partner', { targetGender: 'male', targetCountry: 'IN' });
