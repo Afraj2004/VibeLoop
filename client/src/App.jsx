@@ -9,6 +9,7 @@ import FilterModal from './components/overlays/FilterModal.jsx';
 import AccountModal from './components/overlays/AccountModal.jsx';
 import WalletModal from './components/overlays/WalletModal.jsx';
 import BoostModal, { minutesLeft } from './components/overlays/BoostModal.jsx';
+import TopUpModal from './components/overlays/TopUpModal.jsx';
 import HistoryBar from './components/overlays/HistoryBar.jsx';
 import { useSocket } from './hooks/useSocket.js';
 import { useVibeWebRTC } from './hooks/useVibeWebRTC.js';
@@ -48,6 +49,8 @@ export default function App() {
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isBoostOpen, setIsBoostOpen] = useState(false);
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
   const [boostUntil, setBoostUntil] = useState(null);
   const [boostPrice, setBoostPrice] = useState(10);
 
@@ -211,11 +214,17 @@ export default function App() {
 
     const onSafetyError = ({ error }) => showNotice(error, true);
 
+    // Top-ups confirmed by the payment webhook (e.g. after the checkout window closed)
+    const onWalletUpdated = ({ balance }) => {
+      if (typeof balance === 'number') setWalletBalance(balance);
+    };
+
     socket.on('m2e_progress', onProgress);
     socket.on('gift_received', onGiftReceived);
     socket.on('history_updated', fetchHistory);
     socket.on('safety_ack', onSafetyAck);
     socket.on('safety_error', onSafetyError);
+    socket.on('wallet_updated', onWalletUpdated);
     return () => {
       clearTimeout(giftTimeout);
       socket.off('m2e_progress', onProgress);
@@ -223,6 +232,7 @@ export default function App() {
       socket.off('history_updated', fetchHistory);
       socket.off('safety_ack', onSafetyAck);
       socket.off('safety_error', onSafetyError);
+      socket.off('wallet_updated', onWalletUpdated);
     };
   }, [socket, fetchHistory, showNotice]);
 
@@ -347,7 +357,10 @@ export default function App() {
         secondsUntilNextReward={secondsUntilReward}
         isCallActive={isMatched}
         currentUser={currentUser}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onOpenAuthModal={() => {
+          setAuthMode('login');
+          setIsAuthModalOpen(true);
+        }}
         onLogout={handleLogout}
         onOpenBoostModal={() => setIsBoostOpen(true)}
         boostMinutesLeft={minutesLeft(boostUntil)}
@@ -597,6 +610,7 @@ export default function App() {
         backendUrl={BACKEND_URL}
         token={token}
         isGuest={!currentUser || currentUser.isGuest}
+        initialMode={authMode}
         onAuthSuccess={handleAuthSuccess}
       />
 
@@ -607,6 +621,27 @@ export default function App() {
           onOpenBoost={() => {
             setIsWalletOpen(false);
             setIsBoostOpen(true);
+          }}
+          onOpenTopUp={() => {
+            setIsWalletOpen(false);
+            setIsTopUpOpen(true);
+          }}
+        />
+      )}
+
+      {isTopUpOpen && token && (
+        <TopUpModal
+          token={token}
+          currentUser={currentUser}
+          onClose={() => setIsTopUpOpen(false)}
+          onPurchased={(balance, vibe) => {
+            setWalletBalance(balance);
+            showNotice(`+${vibe} VIBE added to your wallet. Thank you!`);
+          }}
+          onRequireAccount={() => {
+            setIsTopUpOpen(false);
+            setAuthMode('register');
+            setIsAuthModalOpen(true);
           }}
         />
       )}

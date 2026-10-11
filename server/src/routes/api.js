@@ -6,6 +6,7 @@ const authController = require('../controllers/authController');
 const userController = require('../controllers/userController');
 const accountController = require('../controllers/accountController');
 const adminController = require('../controllers/adminController');
+const paymentsController = require('../controllers/paymentsController');
 const requireAdmin = require('../middlewares/requireAdmin');
 const auth = require('../middlewares/auth');
 const optionalAuth = require('../middlewares/optionalAuth');
@@ -45,6 +46,21 @@ router.delete(
   auth,
   rateLimit({ name: 'delete-account', limit: 5, windowSeconds: HOUR, by: 'user' }),
   accountController.deleteAccount
+);
+
+// VIBE top-ups (Razorpay)
+router.get('/payments/packages', paymentsController.getPackages);
+router.post(
+  '/payments/order',
+  auth,
+  rateLimit({ name: 'pay-order', limit: 20, windowSeconds: HOUR, by: 'user' }),
+  paymentsController.createOrder
+);
+router.post(
+  '/payments/verify',
+  auth,
+  rateLimit({ name: 'pay-verify', limit: 60, windowSeconds: HOUR, by: 'user' }),
+  paymentsController.verifyPayment
 );
 
 // Moderation (admins only)

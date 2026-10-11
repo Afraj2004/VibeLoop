@@ -2,7 +2,7 @@
 // and bump TERMS_VERSION (components/overlays/ConsentModal.jsx) when changing them.
 
 export const LEGAL_CONTACT = 'support@vibeloop.com';
-export const LEGAL_EFFECTIVE_DATE = '10 October 2026';
+export const LEGAL_EFFECTIVE_DATE = '11 October 2026';
 
 export const TERMS = {
   title: 'Terms of Service',
@@ -45,6 +45,7 @@ export const TERMS = {
       heading: '5. VIBE tokens',
       paragraphs: [
         'VIBE tokens are a virtual, in-app item. They are not money, have no cash value, cannot be transferred outside VibeLoop, and are not a security or investment. You can earn a limited number of tokens through active video time (currently up to 10 per day) and spend them on in-app gifts for other users.',
+        'You can buy VIBE in packs priced in Indian Rupees (inclusive of applicable taxes) through our payment partner Razorpay. Purchases require a registered account. VIBE is delivered once the payment is confirmed. All purchases are final and non-refundable except where required by law or if VIBE was not delivered; contact us within 7 days about any payment problem.',
         'Half of the value of gifts you receive is recorded as an earned balance. Any future ability to redeem earned balances will be subject to separate terms, verification and applicable law; until then it has no cash value. We may adjust or remove tokens obtained through bugs, abuse or breaches of these Terms, and may change token rules, prices and gift items at any time.'
       ]
     },
@@ -110,6 +111,7 @@ export const PRIVACY = {
         'Consent records: when you confirmed you are 18+ and accepted the Terms, and which version.',
         'Activity: who you were matched with for 20 seconds or more and for how long; in-call chat messages (only the last 30 per conversation are kept); VIBE token balances and transactions; gifts sent and received.',
         'Safety: reports you file (including your IP address at the time, used to stop fake mass-reporting), reports about you, blocks, and any suspensions.',
+        'Payments: when you buy VIBE we store the pack, amount, Razorpay order and payment IDs, and status. Card, UPI and bank details are entered on Razorpay and never reach VibeLoop.',
         'Technical: IP address (used for rate limiting and security), browser information needed to set up calls, and server logs kept by our hosting providers.'
       ]
     },
@@ -126,13 +128,14 @@ export const PRIVACY = {
     {
       heading: '4. Who we share it with',
       paragraphs: [
-        'The person you are matched with sees your video, audio, username, country (if set) and chat messages. We use these service providers to run VibeLoop, who process data only on our instructions: Render (application hosting), Vercel (website hosting), Supabase (database), Upstash (in-memory data store), Cloudflare (call relay) and Better Stack (uptime monitoring). Google\'s public STUN servers help your browser find a network route for calls. These providers may store data in India or other countries, including the United States. We may disclose data where required by law or to protect users\' safety.'
+        'The person you are matched with sees your video, audio, username, country (if set) and chat messages. We use these service providers to run VibeLoop, who process data only on our instructions: Render (application hosting), Vercel (website hosting), Supabase (database), Upstash (in-memory data store), Cloudflare (call relay), Razorpay (payments) and Better Stack (uptime monitoring). Google\'s public STUN servers help your browser find a network route for calls. These providers may store data in India or other countries, including the United States. We may disclose data where required by law or to protect users\' safety.'
       ]
     },
     {
       heading: '5. How long we keep it',
       bullets: [
         'Account, balances, transactions and match history: until you delete your account.',
+        'Payment records: kept for 8 years as required by Indian tax and accounting law, even after account deletion (unlinked from your profile).',
         'Recent contacts list: 30 days.',
         'Chat messages: only the most recent 30 per pair of users.',
         'Reward counters: 2 days. Rate-limit counters: up to 1 hour.',

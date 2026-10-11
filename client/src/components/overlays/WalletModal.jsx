@@ -9,6 +9,8 @@ function describe(tx) {
       return { label: 'Meet-to-Earn reward', Icon: Sparkles, tone: 'text-[#00F0FF]' };
     case 'SEND_GIFT':
       return { label: `Sent ${gift} to ${tx.counterparty || 'a deleted user'}`, Icon: ArrowUpRight, tone: 'text-[#FF2A7A]' };
+    case 'WALLET_REFILL':
+      return { label: 'VIBE top-up', Icon: Coins, tone: 'text-[#FFD166]' };
     case 'PURCHASE_BOOST':
       return { label: 'VibeBoost (1 hour)', Icon: Zap, tone: 'text-[#FF7A00]' };
     case 'RECEIVE_GIFT':
@@ -25,7 +27,7 @@ function formatWhen(value) {
 /**
  * Balances (spendable vs. earned from gifts), today's Meet-to-Earn progress and recent transactions
  */
-export default function WalletModal({ token, onClose, onOpenBoost }) {
+export default function WalletModal({ token, onClose, onOpenBoost, onOpenTopUp }) {
   const [wallet, setWallet] = useState(null);
   const [transactions, setTransactions] = useState(null);
   const [error, setError] = useState('');
@@ -116,10 +118,11 @@ export default function WalletModal({ token, onClose, onOpenBoost }) {
                 <span>VibeBoost</span>
               </button>
               <button
-                disabled
-                className="flex-1 py-2.5 rounded-2xl border border-dashed border-slate-700 text-slate-500 font-bold text-xs cursor-not-allowed"
+                onClick={onOpenTopUp}
+                className="flex-1 py-2.5 rounded-2xl border border-[#FFD166]/50 text-[#FFD166] hover:bg-[#FFD166]/10 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                Top up · coming soon
+                <Coins size={13} />
+                <span>Top up</span>
               </button>
             </div>
           </>
