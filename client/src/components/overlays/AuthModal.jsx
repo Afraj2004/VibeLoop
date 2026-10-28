@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, User, Mail, Lock, Sparkles, LogIn, UserPlus } from 'lucide-react';
+import { COUNTRIES, flagEmoji } from '../../utils/countries.js';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest, initialMode = 'login' }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -7,8 +8,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
     username: '',
     email: '',
     password: '',
-    gender: 'other',
-    country: 'US'
+    gender: '',
+    country: 'ALL'
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -180,13 +181,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
               <div>
                 <label className="text-[11px] text-slate-400 font-medium block mb-1">Gender</label>
                 <select
+                  required
                   value={formData.gender}
                   onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                  className="w-full bg-[#08090D] border border-slate-800 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs text-white outline-none"
+                  className={`w-full bg-[#08090D] border border-slate-800 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs outline-none ${formData.gender ? 'text-white' : 'text-slate-500'}`}
                 >
-                  <option value="other">Any / Other</option>
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
+                  <option value="" disabled>Select...</option>
+                  <option value="female">Woman</option>
+                  <option value="male">Man</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
 
@@ -197,14 +200,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
                   onChange={(e) => setFormData({ ...formData, country: e.target.value })}
                   className="w-full bg-[#08090D] border border-slate-800 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs text-white outline-none"
                 >
-                  <option value="US">🇺🇸 Global / US</option>
-                  <option value="IN">🇮🇳 India</option>
-                  <option value="GB">🇬🇧 UK</option>
-                  <option value="CA">🇨🇦 Canada</option>
-                  <option value="DE">🇩🇪 Germany</option>
-                  <option value="BR">🇧🇷 Brazil</option>
+                  <option value="ALL">{flagEmoji('ALL')} Prefer not to say</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>{flagEmoji(c.code)} {c.name}</option>
+                  ))}
                 </select>
               </div>
+              <p className="col-span-2 text-[10px] text-slate-500">
+                Your gender can't be changed after sign-up. It's used by match filters.
+              </p>
             </div>
           )}
 
