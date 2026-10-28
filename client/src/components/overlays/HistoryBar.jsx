@@ -24,7 +24,7 @@ export default function HistoryBar({ contacts = [], onSelect }) {
   if (contacts.length === 0) return null;
 
   return (
-    <div className="absolute bottom-28 z-30 w-full max-w-lg px-4">
+    <div className="absolute bottom-[calc(7rem+env(safe-area-inset-bottom))] z-30 w-full max-w-lg px-4">
       <div className="flex items-center gap-1.5 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
         <History size={12} className="text-[#00F0FF]" />
         <span>Recent vibes</span>

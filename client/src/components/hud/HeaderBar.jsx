@@ -92,12 +92,13 @@ export default function HeaderBar({
         {/* Wallet Pill */}
         <button 
           onClick={onOpenRechargeModal}
+          aria-label="Wallet"
           className="flex items-center gap-2 bg-[#12151E]/90 hover:bg-slate-800/80 border border-slate-800 hover:border-[#FFD166]/40 px-3 py-1.5 rounded-2xl shadow-xl transition-all group"
         >
           <Coins size={14} className="text-[#FFD166] group-hover:rotate-12 transition-transform" />
           <div className="flex flex-col items-start leading-none">
             <span className="text-[9px] text-slate-400 font-medium">Balance</span>
-            <span className="text-xs font-bold text-white tracking-wide">{vibeBalance.toFixed(2)} VIBE</span>
+            <span className="text-xs font-bold text-white tracking-wide whitespace-nowrap">{vibeBalance.toFixed(2)} VIBE</span>
           </div>
         </button>
 
@@ -117,10 +118,11 @@ export default function HeaderBar({
         ) : (
           <button
             onClick={onOpenAuthModal}
+          aria-label="Sign in"
             className="flex items-center gap-1.5 bg-[#12151E]/90 hover:bg-slate-800/90 border border-[#00F0FF]/40 text-[#00F0FF] px-3.5 py-1.5 rounded-2xl text-xs font-bold shadow-lg transition-all active:scale-95 cursor-pointer"
           >
             <LogIn size={13} />
-            <span>Sign In</span>
+            <span className="hidden min-[360px]:inline whitespace-nowrap">Sign In</span>
           </button>
         )}
 

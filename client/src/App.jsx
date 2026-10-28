@@ -343,10 +343,10 @@ export default function App() {
     connected: 'Connecting video...'
   }[status];
 
-  const controlButton = 'p-3 sm:p-4 rounded-2xl backdrop-blur-xl transition-all shadow-lg active:scale-95 cursor-pointer';
+  const controlButton = 'p-2.5 min-[400px]:p-3 sm:p-4 rounded-2xl backdrop-blur-xl transition-all shadow-lg active:scale-95 cursor-pointer';
 
   return (
-    <div className="relative w-screen h-screen bg-[#08090D] overflow-hidden flex flex-col items-center justify-center">
+    <div className="relative w-screen h-screen supports-[height:100dvh]:h-dvh bg-[#08090D] overflow-hidden flex flex-col items-center justify-center">
 
       {/* Top HUD HeaderBar */}
       <HeaderBar
@@ -388,7 +388,7 @@ export default function App() {
               <p className="text-sm text-slate-400 mt-1 max-w-sm">
                 {isMatched && peer
                   ? `Matched with ${peer.username}${peer.gender ? ` · ${GENDER_LABEL[peer.gender]}` : ''}`
-                  : 'Press START to instantly meet verified people around the globe. Earn VIBE tokens as you chat.'}
+                  : 'Press START to meet new people around the globe. Earn VIBE tokens as you chat.'}
               </p>
             </div>
             {stageError && (
@@ -406,7 +406,7 @@ export default function App() {
         <button
           onClick={() => setIsReportOpen(true)}
           title="Report or block"
-          className="absolute top-20 left-4 sm:top-24 sm:left-6 z-30 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-[#12151E]/80 border border-red-500/40 text-red-400 hover:bg-red-500/10 backdrop-blur-xl text-xs font-bold shadow-lg transition-colors cursor-pointer"
+          className="absolute top-24 left-3 sm:left-6 z-30 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-[#12151E]/80 border border-red-500/40 text-red-400 hover:bg-red-500/10 backdrop-blur-xl text-xs font-bold shadow-lg transition-colors cursor-pointer"
         >
           <Flag size={14} />
           <span>Report</span>
@@ -415,7 +415,7 @@ export default function App() {
 
       {/* Partner badges: their boost, and their gender if *you* are boosted */}
       {isMatched && peer && (peer.boosted || peer.gender) && (
-        <div className="absolute top-32 left-4 sm:top-36 sm:left-6 z-30 flex flex-col items-start gap-1.5">
+        <div className="absolute top-36 left-3 sm:left-6 z-30 flex flex-col items-start gap-1.5">
           {peer.boosted && (
             <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] text-slate-950 text-[11px] font-extrabold shadow-lg">
               🔥 Boosted
@@ -430,7 +430,7 @@ export default function App() {
       )}
 
       {/* Draggable/Fixed Local PIP Camera */}
-      <div className="absolute top-20 right-4 sm:top-24 sm:right-6 w-32 h-44 sm:w-44 sm:h-60 rounded-3xl overflow-hidden border border-slate-700/80 shadow-2xl bg-[#12151E]/80 backdrop-blur-xl z-30 transition-all">
+      <div className="absolute top-24 right-3 sm:right-6 w-24 h-32 min-[400px]:w-28 min-[400px]:h-40 sm:w-44 sm:h-60 rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-700/80 shadow-2xl bg-[#12151E]/80 backdrop-blur-xl z-30 transition-all">
         <video
           ref={localVideoRef}
           autoPlay
@@ -457,11 +457,13 @@ export default function App() {
       )}
 
       {/* Bottom Floating Control Bar */}
-      <div className="absolute bottom-6 z-40 px-4 flex items-center gap-2 sm:gap-3 max-w-lg w-full justify-center">
+      <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] z-40 px-3 sm:px-4 flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3 max-w-lg w-full justify-center">
 
         {/* Toggle Mic */}
         <button
           onClick={toggleAudio}
+          aria-label={isAudioOn ? 'Mute microphone' : 'Unmute microphone'}
+          title={isAudioOn ? 'Mute microphone' : 'Unmute microphone'}
           className={`${controlButton} border ${
             isAudioOn
               ? 'bg-[#12151E]/90 border-slate-800 text-white hover:bg-slate-800'
@@ -474,6 +476,8 @@ export default function App() {
         {/* Toggle Video */}
         <button
           onClick={toggleVideo}
+          aria-label={isVideoOn ? 'Turn camera off' : 'Turn camera on'}
+          title={isVideoOn ? 'Turn camera off' : 'Turn camera on'}
           className={`${controlButton} border ${
             isVideoOn
               ? 'bg-[#12151E]/90 border-slate-800 text-white hover:bg-slate-800'
@@ -487,7 +491,7 @@ export default function App() {
         <button
           onClick={handlePrimaryAction}
           disabled={!socket || !hasConsented}
-          className="flex-1 py-3 sm:py-4 px-4 sm:px-6 rounded-2xl bg-gradient-to-r from-[#00F0FF] to-[#FF2A7A] hover:opacity-95 text-slate-950 font-black text-sm tracking-wider flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,240,255,0.4)] active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 min-w-0 py-2.5 min-[400px]:py-3 sm:py-4 px-3 sm:px-6 rounded-2xl bg-gradient-to-r from-[#00F0FF] to-[#FF2A7A] hover:opacity-95 text-slate-950 font-black text-sm tracking-wider flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,240,255,0.4)] active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {status === 'searching' ? (
             <>
@@ -497,7 +501,7 @@ export default function App() {
           ) : (
             <>
               <span>{isMatched ? 'NEXT' : 'START'}</span>
-              <FastForward size={18} className="fill-slate-950" />
+              <FastForward size={18} className="hidden min-[400px]:block fill-slate-950" />
             </>
           )}
         </button>
@@ -506,6 +510,7 @@ export default function App() {
         <button
           onClick={() => setIsFilterOpen(true)}
           title="Match filters"
+          aria-label="Match filters"
           className={`${controlButton} relative bg-[#12151E]/90 hover:bg-slate-800 border border-slate-800 text-white`}
         >
           <SlidersHorizontal size={20} />
@@ -517,6 +522,8 @@ export default function App() {
         {/* Chat Toggle Trigger */}
         <button
           onClick={() => setIsChatOpen(!isChatOpen)}
+          aria-label="Chat"
+          title="Chat"
           className={`${controlButton} relative bg-[#12151E]/90 hover:bg-slate-800 border border-[#00F0FF]/40 text-[#00F0FF]`}
         >
           <MessageSquare size={20} />
@@ -528,6 +535,8 @@ export default function App() {
         {/* Gift Trigger */}
         <button
           onClick={() => setGiftTarget(peer)}
+          aria-label="Send a gift"
+          title="Send a gift"
           disabled={!isMatched}
           className={`${controlButton} bg-[#12151E]/90 hover:bg-slate-800 border border-[#FFD166]/40 text-[#FFD166] disabled:opacity-40 disabled:cursor-not-allowed`}
         >
@@ -671,7 +680,7 @@ export default function App() {
       )}
 
       {/* Legal & data links */}
-      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 z-40 flex gap-3 text-[10px] text-slate-600 whitespace-nowrap">
+      <div className="absolute bottom-[calc(0.25rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-40 flex gap-3 text-[10px] text-slate-400 whitespace-nowrap">
         <a href="/terms" target="_blank" rel="noreferrer" className="hover:text-slate-300">Terms</a>
         <a href="/privacy" target="_blank" rel="noreferrer" className="hover:text-slate-300">Privacy</a>
         <button onClick={() => setIsAccountOpen(true)} className="hover:text-slate-300 cursor-pointer">Your account &amp; data</button>
