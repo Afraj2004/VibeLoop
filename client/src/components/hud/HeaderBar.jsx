@@ -39,12 +39,12 @@ export default function HeaderBar({
       
       {/* Left: Brand Logo & Online Counter */}
       <div className="flex items-center gap-2.5 pointer-events-auto">
-        <div className="flex items-center gap-2 bg-[#12151E]/90 backdrop-blur-xl border border-slate-800/80 px-3 py-1.5 rounded-2xl shadow-xl">
+        <a href="/" aria-label="VibeLoop home" className="flex items-center gap-2 bg-[#12151E]/90 hover:border-slate-700 backdrop-blur-xl border border-slate-800/80 px-3 py-1.5 rounded-2xl shadow-xl transition-colors">
           <div className="w-2.5 h-2.5 rounded-full bg-[#00F0FF] animate-pulse shadow-[0_0_8px_#00F0FF]" />
           <span className="font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-[#00F0FF] via-slate-100 to-[#FF2A7A] text-sm sm:text-base">
             VIBELOOP
           </span>
-        </div>
+        </a>
 
         <div className="hidden sm:flex items-center gap-1.5 bg-[#12151E]/70 backdrop-blur-md border border-slate-800/60 px-3 py-1.5 rounded-2xl text-xs font-semibold text-slate-300">
           <Users size={13} className="text-[#00F0FF]" />
@@ -85,6 +85,15 @@ export default function HeaderBar({
         <span className="text-[10px] font-mono text-slate-400">
           <span className="text-[#00F0FF] font-bold">{m2eEarnedToday.toFixed(2)}</span>/{m2eDailyCap.toFixed(0)}
         </span>
+        {/* Phones have no room for the BOOST button on the right */}
+        <button
+          onClick={onOpenBoostModal}
+          aria-label="VibeBoost"
+          className="ml-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] text-slate-950 text-[10px] font-extrabold cursor-pointer"
+        >
+          <Zap size={10} className="fill-slate-950" />
+          {boostMinutesLeft > 0 && <span>{boostMinutesLeft}m</span>}
+        </button>
       </div>
 
       {/* Right: Wallet Balance & User Auth Pill */}
@@ -129,7 +138,7 @@ export default function HeaderBar({
         {/* Boost Button */}
         <button
           onClick={onOpenBoostModal}
-          className="hidden md:flex items-center gap-1.5 bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] hover:opacity-90 text-slate-950 px-3 py-1.5 rounded-2xl text-xs font-extrabold shadow-[0_0_15px_rgba(255,42,122,0.3)] transition-all active:scale-95 cursor-pointer"
+          className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] hover:opacity-90 text-slate-950 px-3 py-1.5 rounded-2xl text-xs font-extrabold shadow-[0_0_15px_rgba(255,42,122,0.3)] transition-all active:scale-95 cursor-pointer"
         >
           <Zap size={13} className="fill-slate-950" />
           <span>{boostMinutesLeft > 0 ? `${boostMinutesLeft}m` : 'BOOST'}</span>

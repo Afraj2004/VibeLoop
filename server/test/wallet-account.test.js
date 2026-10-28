@@ -27,6 +27,8 @@ stubModule('config/db.js', {
     if (sql.startsWith('UPDATE users SET username')) return { rows: state.guestExists ? [userRow(params[0])] : [] };
     if (sql.startsWith('INSERT INTO users (username, email')) return { rows: [userRow(NEW_ID, { vibe_balance: '10.00' })] };
     if (sql.startsWith('SELECT t.id, t.amount')) return { rows: state.ledger };
+    if (sql.startsWith('SELECT is_guest, gender FROM users')) return { rows: state.profile ? [state.profile] : [] };
+    if (sql.startsWith('UPDATE users SET gender')) return { rows: [userRow(params[0], { gender: params[1], country_code: params[2], is_guest: state.profile.is_guest })] };
     throw new Error(`unhandled SQL: ${sql}`);
   }
 });
@@ -128,6 +130,44 @@ describe('registration from a guest session', () => {
     });
     assert.strictEqual(status, 400);
     assert.ok(!queries.some((q) => q.sql.startsWith('UPDATE users')));
+  });
+});
+
+describe('gender lock', () => {
+  beforeEach(() => {
+    queries = [];
+    state = { conflict: false, guestExists: true, ledger: [] };
+  });
+
+  it('requires a gender to register', async () => {
+    const { status, body } = await call(authController.register, { body: { ...REGISTRATION, gender: undefined } });
+    assert.strictEqual(status, 400);
+    assert.match(body.error, /gender/i);
+    assert.strictEqual(queries.length, 0);
+  });
+
+  it('lets guests change gender freely', async () => {
+    state.profile = { is_guest: true, gender: 'other' };
+    const { status, body } = await call(authController.updateProfile, {
+      body: { gender: 'male', country: 'IN' }, user: { id: GUEST_ID, isGuest: true }
+    });
+    assert.strictEqual(status, 200);
+    assert.strictEqual(body.user.gender, 'male');
+  });
+
+  it('stops registered users changing gender but still allows a country change', async () => {
+    state.profile = { is_guest: false, gender: 'female' };
+    let result = await call(authController.updateProfile, {
+      body: { gender: 'male', country: 'IN' }, user: { id: OTHER_ID, isGuest: false }
+    });
+    assert.strictEqual(result.status, 403);
+    assert.ok(!queries.some((q) => q.sql.startsWith('UPDATE users')));
+
+    result = await call(authController.updateProfile, {
+      body: { gender: 'female', country: 'GB' }, user: { id: OTHER_ID, isGuest: false }
+    });
+    assert.strictEqual(result.status, 200);
+    assert.strictEqual(result.body.user.country, 'GB');
   });
 });
 

@@ -38,8 +38,9 @@ function validateRegistration({ username, email, password, gender, country }) {
   if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
     return 'Password must be 8-128 characters';
   }
-  if (gender && !GENDERS.includes(gender)) {
-    return 'Invalid gender';
+  // Required: it is locked once the account exists (see updateProfile)
+  if (!GENDERS.includes(gender)) {
+    return 'Choose your gender';
   }
   if (country && !COUNTRY_PATTERN.test(country)) {
     return 'Invalid country code';
@@ -113,7 +114,7 @@ exports.register = async (req, res) => {
              is_guest = FALSE, age_confirmed_at = NOW(), terms_accepted_at = NOW(), terms_version = $7
          WHERE id = $1 AND is_guest = TRUE
          RETURNING ${USER_COLUMNS}`,
-        [guestId, username, email, passwordHash, gender || 'other', country || 'ALL', TERMS_VERSION]
+        [guestId, username, email, passwordHash, gender, country || 'ALL', TERMS_VERSION]
       );
 
       // Falls through to a fresh account if the guest row no longer exists
@@ -128,7 +129,7 @@ exports.register = async (req, res) => {
       `INSERT INTO users (username, email, password_hash, gender, country_code,
                           age_confirmed_at, terms_accepted_at, terms_version)
        VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6) RETURNING ${USER_COLUMNS}`,
-      [username, email, passwordHash, gender || 'other', country || 'ALL', TERMS_VERSION]
+      [username, email, passwordHash, gender, country || 'ALL', TERMS_VERSION]
     );
 
     const user = newUser.rows[0];
@@ -173,7 +174,9 @@ exports.login = async (req, res) => {
 
 /**
  * PATCH /api/auth/profile
- * Updates the matchmaking profile (own gender/country). Issues a fresh token because
+ * Updates the matchmaking profile (own gender/country). Registered accounts keep the gender
+ * they signed up with, so it cannot be flipped to slip past other people's gender filters.
+ * Issues a fresh token because
  * the signaling server reads these values from the token claims.
  */
 exports.updateProfile = async (req, res) => {
@@ -187,6 +190,17 @@ exports.updateProfile = async (req, res) => {
   }
 
   try {
+    const current = await db.query('SELECT is_guest, gender FROM users WHERE id = $1', [req.user.id]);
+    if (!current.rows[0]) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    if (!current.rows[0].is_guest && current.rows[0].gender !== gender) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your gender was set when you signed up and cannot be changed. Contact support@vibeloop.com if it is wrong.'
+      });
+    }
+
     const result = await db.query(
       `UPDATE users SET gender = $2, country_code = $3 WHERE id = $1 RETURNING ${USER_COLUMNS}`,
       [req.user.id, gender, country]

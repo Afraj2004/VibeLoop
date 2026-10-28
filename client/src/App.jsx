@@ -14,10 +14,10 @@ import HistoryBar from './components/overlays/HistoryBar.jsx';
 import { useSocket } from './hooks/useSocket.js';
 import { useVibeWebRTC } from './hooks/useVibeWebRTC.js';
 import { apiFetch, BACKEND_URL } from './utils/api.js';
-import {
-  Video, VideoOff, Mic, MicOff, FastForward, Gift, MessageSquare, Sparkles, Square,
-  AlertTriangle, Flag, SlidersHorizontal
-} from 'lucide-react';
+import SelfView from './components/hud/SelfView.jsx';
+import ControlBar from './components/hud/ControlBar.jsx';
+import { COUNTRIES, flagEmoji } from './utils/countries.js';
+import { Sparkles, AlertTriangle, Flag } from 'lucide-react';
 
 const DEFAULT_PREFERENCES = { targetGender: 'any', targetCountry: 'ALL' };
 const GENDER_LABEL = { female: 'Woman', male: 'Man', other: 'Other' };
@@ -39,6 +39,7 @@ export default function App() {
 
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isAudioOn, setIsAudioOn] = useState(true);
+  const [selfViewSide, setSelfViewSide] = useState(() => (localStorage.getItem('vibeloop_pip_side') === 'left' ? 'left' : 'right'));
 
   // Overlays
   const [giftTarget, setGiftTarget] = useState(null);
@@ -286,12 +287,17 @@ export default function App() {
   const isBoosted = minutesLeft(boostUntil) > 0;
   const searchPreferences = isBoosted ? preferences : { ...preferences, targetGender: 'any' };
 
-  const handlePrimaryAction = () => {
-    if (status === 'searching') {
-      stop();
-    } else {
+  // Start enters matchmaking; Stop leaves it (ending any call). Next skips to someone new.
+  const handleStartStop = () => {
+    if (status === 'idle') {
       findPartner(searchPreferences);
+    } else {
+      stop();
     }
+  };
+
+  const handleNext = () => {
+    if (isMatched) findPartner(searchPreferences);
   };
 
   const handleSendMessage = (text) => {
@@ -339,11 +345,23 @@ export default function App() {
 
   const stageTitle = {
     idle: 'Ready to discover',
-    searching: 'Connecting to next vibe...',
+    searching: 'Finding someone...',
     connected: 'Connecting video...'
   }[status];
 
-  const controlButton = 'p-2.5 min-[400px]:p-3 sm:p-4 rounded-2xl backdrop-blur-xl transition-all shadow-lg active:scale-95 cursor-pointer';
+  const handleSelfViewSide = (side) => {
+    localStorage.setItem('vibeloop_pip_side', side);
+    setSelfViewSide(side);
+  };
+
+  // Partner info sits on the side away from your camera tile
+  const partnerSide = selfViewSide === 'right' ? 'left-3 sm:left-6 items-start' : 'right-3 sm:right-6 items-end';
+  const filterSummary = [
+    isBoosted && preferences.targetGender !== 'any' ? (preferences.targetGender === 'female' ? 'Women' : 'Men') : null,
+    preferences.targetCountry !== 'ALL'
+      ? `${flagEmoji(preferences.targetCountry)} ${COUNTRIES.find((c) => c.code === preferences.targetCountry)?.name || preferences.targetCountry}`
+      : null
+  ].filter(Boolean);
 
   // On wide screens the chat drawer docks beside the stage instead of covering it
   return (
@@ -370,23 +388,35 @@ export default function App() {
 
       {/* Main Remote Video Stage */}
       <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-black">
+        {/* Ambient glow behind the idle / searching states */}
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(0,240,255,0.08),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(255,42,122,0.08),transparent_55%)]" />
+
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          className={`w-full h-full object-cover ${isMatched && remoteStream ? '' : 'hidden'}`}
+          className={`relative w-full h-full object-cover ${isMatched && remoteStream ? '' : 'hidden'}`}
         />
         {!(isMatched && remoteStream) && (
-          <div className="flex flex-col items-center justify-center gap-4 text-center px-6">
-            <div className="relative">
-              <div className="w-24 h-24 rounded-full border-2 border-[#00F0FF]/30 border-t-[#00F0FF] animate-spin flex items-center justify-center shadow-[0_0_30px_rgba(0,240,255,0.2)]" />
-              <Sparkles className="absolute inset-0 m-auto text-[#00F0FF] animate-pulse" size={32} />
+          <div className="relative flex flex-col items-center justify-center gap-5 text-center px-6 -mt-10 sm:mt-0">
+            <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
+              {status === 'idle' ? (
+                <div className="absolute inset-0 rounded-full border-2 border-[#00F0FF]/30 border-t-[#00F0FF] animate-spin-slow shadow-[0_0_30px_rgba(0,240,255,0.2)]" />
+              ) : (
+                <>
+                  <span className="absolute inset-0 rounded-full border border-[#00F0FF]/50 animate-ping" />
+                  <span className="absolute inset-3 rounded-full border border-[#FF2A7A]/40 animate-ping [animation-delay:400ms]" />
+                  <div className="absolute inset-0 rounded-full border-2 border-[#00F0FF]/20 border-t-[#00F0FF] animate-spin shadow-[0_0_30px_rgba(0,240,255,0.25)]" />
+                </>
+              )}
+              <Sparkles className="text-[#00F0FF] animate-pulse" size={32} />
             </div>
+
             <div>
-              <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-wide">
+              <h2 className="text-xl sm:text-3xl font-extrabold text-white tracking-wide">
                 {stageTitle}
               </h2>
-              <p className="text-sm text-slate-400 mt-1 max-w-sm">
+              <p className="text-sm text-slate-400 mt-1.5 max-w-sm mx-auto">
                 {isMatched && peer
                   ? `Matched with ${peer.username}${peer.gender ? ` · ${GENDER_LABEL[peer.gender]}` : ''}`
                   : status === 'searching'
@@ -394,6 +424,23 @@ export default function App() {
                     : 'Press START to meet new people around the globe. Earn VIBE tokens as you chat.'}
               </p>
             </div>
+
+            {status === 'idle' && !stageError && (
+              <div className="flex flex-wrap justify-center gap-2 max-w-sm">
+                <span className="px-3 py-1.5 rounded-full bg-[#12151E]/80 border border-slate-800 text-[11px] font-semibold text-slate-300">⏱ 0.10 VIBE every 3 min</span>
+                <span className="px-3 py-1.5 rounded-full bg-[#12151E]/80 border border-slate-800 text-[11px] font-semibold text-slate-300">🎁 Send gifts</span>
+                <span className="px-3 py-1.5 rounded-full bg-[#12151E]/80 border border-slate-800 text-[11px] font-semibold text-slate-300">🛡️ Report &amp; block</span>
+              </div>
+            )}
+
+            {status === 'searching' && filterSummary.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-2">
+                {filterSummary.map((label) => (
+                  <span key={label} className="px-3 py-1.5 rounded-full bg-[#00F0FF]/10 border border-[#00F0FF]/30 text-[11px] font-semibold text-[#00F0FF]">{label}</span>
+                ))}
+              </div>
+            )}
+
             {stageError && (
               <div className="flex items-start gap-2 max-w-sm p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs text-left">
                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
@@ -404,21 +451,12 @@ export default function App() {
         )}
       </div>
 
-      {/* In-call Report / Block */}
-      {isMatched && (
-        <button
-          onClick={() => setIsReportOpen(true)}
-          title="Report or block"
-          className="absolute top-24 left-3 sm:left-6 z-30 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-[#12151E]/80 border border-red-500/40 text-red-400 hover:bg-red-500/10 backdrop-blur-xl text-xs font-bold shadow-lg transition-colors cursor-pointer"
-        >
-          <Flag size={14} />
-          <span>Report</span>
-        </button>
-      )}
-
-      {/* Partner badges: their boost, and their gender if *you* are boosted */}
-      {isMatched && peer && (peer.boosted || peer.gender) && (
-        <div className="absolute top-36 left-3 sm:left-6 z-30 flex flex-col items-start gap-1.5">
+      {/* Partner: name, badges and Report / Block */}
+      {isMatched && peer && (
+        <div className={`absolute top-24 ${partnerSide} z-30 flex flex-col gap-1.5 max-w-[45%]`}>
+          <span className="max-w-full truncate px-3 py-1.5 rounded-2xl bg-black/50 border border-white/10 backdrop-blur-xl text-xs font-bold text-white">
+            {peer.country && peer.country !== 'ALL' ? `${flagEmoji(peer.country)} ` : ''}{peer.username}
+          </span>
           {peer.boosted && (
             <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] text-slate-950 text-[11px] font-extrabold shadow-lg">
               🔥 Boosted
@@ -429,27 +467,27 @@ export default function App() {
               {GENDER_LABEL[peer.gender]}
             </span>
           )}
+          <button
+            onClick={() => setIsReportOpen(true)}
+            title="Report or block"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-[#12151E]/80 border border-red-500/40 text-red-400 hover:bg-red-500/10 backdrop-blur-xl text-xs font-bold shadow-lg transition-colors cursor-pointer"
+          >
+            <Flag size={13} />
+            <span>Report</span>
+          </button>
         </div>
       )}
 
-      {/* Draggable/Fixed Local PIP Camera */}
-      <div className="absolute top-24 right-3 sm:right-6 w-24 h-32 min-[400px]:w-28 min-[400px]:h-40 sm:w-44 sm:h-60 rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-700/80 shadow-2xl bg-[#12151E]/80 backdrop-blur-xl z-30 transition-all">
-        <video
-          ref={localVideoRef}
-          autoPlay
-          muted
-          playsInline
-          className={`w-full h-full object-cover scale-x-[-1] ${!isVideoOn || !localStream ? 'hidden' : ''}`}
-        />
-        {(!isVideoOn || !localStream) && (
-          <div className="w-full h-full flex items-center justify-center text-slate-500 bg-[#08090D]">
-            <VideoOff size={28} />
-          </div>
-        )}
-        <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md text-[10px] font-bold text-slate-300">
-          YOU
-        </div>
-      </div>
+      <SelfView
+        videoRef={localVideoRef}
+        showVideo={isVideoOn && Boolean(localStream)}
+        side={selfViewSide}
+        onSideChange={handleSelfViewSide}
+        isAudioOn={isAudioOn}
+        isVideoOn={isVideoOn}
+        onToggleAudio={toggleAudio}
+        onToggleVideo={toggleVideo}
+      />
 
       {/* Recent contacts (20s+ calls), shown between calls */}
       {!isMatched && (
@@ -459,94 +497,21 @@ export default function App() {
         />
       )}
 
-      {/* Bottom Floating Control Bar */}
-      <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] z-40 px-3 sm:px-4 flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3 max-w-lg w-full justify-center">
-
-        {/* Toggle Mic */}
-        <button
-          onClick={toggleAudio}
-          aria-label={isAudioOn ? 'Mute microphone' : 'Unmute microphone'}
-          title={isAudioOn ? 'Mute microphone' : 'Unmute microphone'}
-          className={`${controlButton} border ${
-            isAudioOn
-              ? 'bg-[#12151E]/90 border-slate-800 text-white hover:bg-slate-800'
-              : 'bg-red-500/20 border-red-500/50 text-red-400'
-          }`}
-        >
-          {isAudioOn ? <Mic size={20} /> : <MicOff size={20} />}
-        </button>
-
-        {/* Toggle Video */}
-        <button
-          onClick={toggleVideo}
-          aria-label={isVideoOn ? 'Turn camera off' : 'Turn camera on'}
-          title={isVideoOn ? 'Turn camera off' : 'Turn camera on'}
-          className={`${controlButton} border ${
-            isVideoOn
-              ? 'bg-[#12151E]/90 border-slate-800 text-white hover:bg-slate-800'
-              : 'bg-red-500/20 border-red-500/50 text-red-400'
-          }`}
-        >
-          {isVideoOn ? <Video size={20} /> : <VideoOff size={20} />}
-        </button>
-
-        {/* Primary START / STOP / NEXT Button */}
-        <button
-          onClick={handlePrimaryAction}
-          disabled={!socket || !hasConsented}
-          className="flex-1 min-w-0 py-2.5 min-[400px]:py-3 sm:py-4 px-3 sm:px-6 rounded-2xl bg-gradient-to-r from-[#00F0FF] to-[#FF2A7A] hover:opacity-95 text-slate-950 font-black text-sm tracking-wider flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(0,240,255,0.4)] active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {status === 'searching' ? (
-            <>
-              <span>STOP</span>
-              <Square size={16} className="fill-slate-950" />
-            </>
-          ) : (
-            <>
-              <span>{isMatched ? 'NEXT' : 'START'}</span>
-              <FastForward size={18} className="hidden min-[400px]:block fill-slate-950" />
-            </>
-          )}
-        </button>
-
-        {/* Filters */}
-        <button
-          onClick={() => setIsFilterOpen(true)}
-          title="Match filters"
-          aria-label="Match filters"
-          className={`${controlButton} relative bg-[#12151E]/90 hover:bg-slate-800 border border-slate-800 text-white`}
-        >
-          <SlidersHorizontal size={20} />
-          {(preferences.targetGender !== 'any' || preferences.targetCountry !== 'ALL') && (
-            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#00F0FF]" />
-          )}
-        </button>
-
-        {/* Chat Toggle Trigger */}
-        <button
-          onClick={() => setIsChatOpen(!isChatOpen)}
-          aria-label="Chat"
-          title="Chat"
-          className={`${controlButton} relative bg-[#12151E]/90 hover:bg-slate-800 border border-[#00F0FF]/40 text-[#00F0FF]`}
-        >
-          <MessageSquare size={20} />
-          {messages.length > 0 && (
-            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#FF2A7A] animate-ping" />
-          )}
-        </button>
-
-        {/* Gift Trigger */}
-        <button
-          onClick={() => setGiftTarget(peer)}
-          aria-label="Send a gift"
-          title="Send a gift"
-          disabled={!isMatched}
-          className={`${controlButton} bg-[#12151E]/90 hover:bg-slate-800 border border-[#FFD166]/40 text-[#FFD166] disabled:opacity-40 disabled:cursor-not-allowed`}
-        >
-          <Gift size={20} />
-        </button>
-
-      </div>
+      <ControlBar
+        status={status}
+        canStart={Boolean(socket) && hasConsented}
+        onStartStop={handleStartStop}
+        onNext={handleNext}
+        isAudioOn={isAudioOn}
+        isVideoOn={isVideoOn}
+        onToggleAudio={toggleAudio}
+        onToggleVideo={toggleVideo}
+        onOpenFilters={() => setIsFilterOpen(true)}
+        filtersActive={preferences.targetGender !== 'any' || preferences.targetCountry !== 'ALL'}
+        onToggleChat={() => setIsChatOpen(!isChatOpen)}
+        hasUnreadChat={messages.length > 0 && !isChatOpen}
+        onGift={() => setGiftTarget(peer)}
+      />
 
       {/* Toast notices (safety confirmations / errors) */}
       {notice && (
@@ -609,6 +574,7 @@ export default function App() {
           onClose={() => setIsFilterOpen(false)}
           onSave={handleSaveFilters}
           genderLocked={!isBoosted}
+          ownGenderFixed={Boolean(currentUser && !currentUser.isGuest)}
           onUnlockGender={() => {
             setIsFilterOpen(false);
             setIsBoostOpen(true);

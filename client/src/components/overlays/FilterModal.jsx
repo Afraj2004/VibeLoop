@@ -51,7 +51,9 @@ function CountrySelect({ value, onChange, anyLabel }) {
 /**
  * Who to meet (applied on the next search) and who you are (lets others' filters find you)
  */
-export default function FilterModal({ preferences, profile, genderLocked = false, onUnlockGender, onClose, onSave }) {
+export default function FilterModal({
+  preferences, profile, genderLocked = false, ownGenderFixed = false, onUnlockGender, onClose, onSave
+}) {
   const [targetGender, setTargetGender] = useState(preferences.targetGender);
   const [targetCountry, setTargetCountry] = useState(preferences.targetCountry);
   const [gender, setGender] = useState(profile.gender);
@@ -119,11 +121,25 @@ export default function FilterModal({ preferences, profile, genderLocked = false
 
         <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">About me</h4>
         <div className="space-y-2 mb-2">
-          <SegmentedControl options={OWN_GENDERS} value={gender} onChange={setGender} />
+          {ownGenderFixed ? (
+            <div className="flex items-center justify-between gap-3 bg-[#08090D] border border-slate-800 rounded-2xl px-3 py-2.5">
+              <span className="text-xs font-bold text-white">
+                {OWN_GENDERS.find((g) => g.id === gender)?.label || 'Other'}
+              </span>
+              <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                <Lock size={11} />
+                Set at sign-up
+              </span>
+            </div>
+          ) : (
+            <SegmentedControl options={OWN_GENDERS} value={gender} onChange={setGender} />
+          )}
           <CountrySelect value={country} onChange={setCountry} anyLabel="Prefer not to say" />
         </div>
         <p className="text-[10px] text-slate-500 mb-5">
-          People filtering by gender or country can only find you if you set these. Changing them ends your current call.
+          {ownGenderFixed
+            ? 'Your gender is fixed once you register. Changing your country ends your current call.'
+            : 'People filtering by gender or country can only find you if you set these. Gender is locked once you create an account. Changing them ends your current call.'}
         </p>
 
         {error && (
