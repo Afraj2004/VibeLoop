@@ -345,8 +345,9 @@ export default function App() {
 
   const controlButton = 'p-2.5 min-[400px]:p-3 sm:p-4 rounded-2xl backdrop-blur-xl transition-all shadow-lg active:scale-95 cursor-pointer';
 
+  // On wide screens the chat drawer docks beside the stage instead of covering it
   return (
-    <div className="relative w-screen h-screen supports-[height:100dvh]:h-dvh bg-[#08090D] overflow-hidden flex flex-col items-center justify-center">
+    <div className={`relative w-screen ${isChatOpen ? 'lg:w-[calc(100vw-24rem)]' : ''} h-screen supports-[height:100dvh]:h-dvh bg-[#08090D] overflow-hidden flex flex-col items-center justify-center`}>
 
       {/* Top HUD HeaderBar */}
       <HeaderBar
@@ -388,7 +389,9 @@ export default function App() {
               <p className="text-sm text-slate-400 mt-1 max-w-sm">
                 {isMatched && peer
                   ? `Matched with ${peer.username}${peer.gender ? ` · ${GENDER_LABEL[peer.gender]}` : ''}`
-                  : 'Press START to meet new people around the globe. Earn VIBE tokens as you chat.'}
+                  : status === 'searching'
+                    ? 'Looking for someone who matches your filters.'
+                    : 'Press START to meet new people around the globe. Earn VIBE tokens as you chat.'}
               </p>
             </div>
             {stageError && (

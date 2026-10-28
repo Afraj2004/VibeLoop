@@ -35,7 +35,7 @@ export default function HeaderBar({
   const isCapReached = m2eEarnedToday >= m2eDailyCap;
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-40 px-3 sm:px-6 py-3 flex items-center justify-between pointer-events-none">
+    <header className="absolute top-0 left-0 right-0 z-40 px-3 sm:px-6 py-3 flex items-center justify-between pointer-events-none">
       
       {/* Left: Brand Logo & Online Counter */}
       <div className="flex items-center gap-2.5 pointer-events-auto">
