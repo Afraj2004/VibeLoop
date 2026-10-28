@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url TEXT,
     gender VARCHAR(10) DEFAULT 'other',
     country_code VARCHAR(3) DEFAULT 'ALL',
-    vibe_balance NUMERIC(10, 2) DEFAULT 10.00,
+    vibe_balance NUMERIC(10, 2) DEFAULT 0.00,
     is_verified BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -144,3 +144,27 @@ CREATE TABLE IF NOT EXISTS payments (
     paid_at TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, created_at DESC);
+
+-- New sessions start with 0 VIBE; registering grants a one-off bonus instead (see config/economy.js)
+ALTER TABLE users ALTER COLUMN vibe_balance SET DEFAULT 0.00;
+
+-- Profile photo (a small data URL, served by GET /api/users/:id/avatar). The reward is paid once.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_updated_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_rewarded_at TIMESTAMP WITH TIME ZONE;
+
+-- Friends: one row per pair, pending until the addressee accepts
+CREATE TABLE IF NOT EXISTS friendships (
+    requester_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    addressee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    accepted_at TIMESTAMP WITH TIME ZONE,
+    PRIMARY KEY (requester_id, addressee_id),
+    CHECK (requester_id <> addressee_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_friendships_pair
+    ON friendships (LEAST(requester_id, addressee_id), GREATEST(requester_id, addressee_id));
+CREATE INDEX IF NOT EXISTS idx_friendships_addressee ON friendships(addressee_id);
+
+-- Likes: lifetime count of likes received in chats (one like per call, enforced by the signaling server)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS likes_received INTEGER NOT NULL DEFAULT 0;

@@ -10,17 +10,22 @@ import AccountModal from './components/overlays/AccountModal.jsx';
 import WalletModal from './components/overlays/WalletModal.jsx';
 import BoostModal, { minutesLeft } from './components/overlays/BoostModal.jsx';
 import TopUpModal from './components/overlays/TopUpModal.jsx';
+import ProfileModal from './components/overlays/ProfileModal.jsx';
+import FriendsPanel from './components/overlays/FriendsPanel.jsx';
+import CallOverlay from './components/overlays/CallOverlay.jsx';
 import HistoryBar from './components/overlays/HistoryBar.jsx';
 import { useSocket } from './hooks/useSocket.js';
 import { useVibeWebRTC } from './hooks/useVibeWebRTC.js';
+import { useFriends } from './hooks/useFriends.js';
 import { apiFetch, BACKEND_URL } from './utils/api.js';
 import SelfView from './components/hud/SelfView.jsx';
 import ControlBar from './components/hud/ControlBar.jsx';
+import LikeBurst from './components/hud/LikeBurst.jsx';
+import GenderLabel, { genderText } from './components/hud/GenderLabel.jsx';
 import { COUNTRIES, flagEmoji } from './utils/countries.js';
-import { Sparkles, AlertTriangle, Flag } from 'lucide-react';
+import { Sparkles, AlertTriangle, Flag, UserPlus, Users, Heart } from 'lucide-react';
 
 const DEFAULT_PREFERENCES = { targetGender: 'any', targetCountry: 'ALL' };
-const GENDER_LABEL = { female: 'Woman', male: 'Man', other: 'Other' };
 
 function loadJson(key) {
   try {
@@ -51,9 +56,12 @@ export default function App() {
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isBoostOpen, setIsBoostOpen] = useState(false);
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isFriendsOpen, setIsFriendsOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login');
   const [boostUntil, setBoostUntil] = useState(null);
   const [boostPrice, setBoostPrice] = useState(10);
+  const [rewards, setRewards] = useState({ SIGNUP: 5, PROFILE_PHOTO: 1 });
 
   // Chat & Economy
   const [messages, setMessages] = useState([]);
@@ -65,6 +73,11 @@ export default function App() {
   const [incomingGift, setIncomingGift] = useState(null);
   const [contacts, setContacts] = useState([]);
   const [notice, setNotice] = useState(null);
+
+  // Likes: the partner's lifetime total, whether we liked this chat, and burst animations
+  const [peerLikes, setPeerLikes] = useState(null); // { userId, likes }
+  const [hasLiked, setHasLiked] = useState(false);
+  const [likeBurst, setLikeBurst] = useState(null); // { id, received }
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -93,10 +106,15 @@ export default function App() {
 
   const { socket, onlineCount } = useSocket(token, clearSession);
   const {
-    localStream, remoteStream, status, peer, mediaError, matchError, findPartner, stop
+    localStream, remoteStream, status, peer, isFriendCall, mediaError, matchError, findPartner, stop
   } = useVibeWebRTC(socket, token, hasConsented);
   const stageError = sessionError || matchError || mediaError;
   const isMatched = status === 'connected';
+
+  const isRegistered = Boolean(currentUser && !currentUser.isGuest);
+  const friends = useFriends(socket, token, currentUser?.id, isRegistered, showNotice);
+  const isFriendCallRef = useRef(isFriendCall);
+  isFriendCallRef.current = isFriendCall;
 
   const handleConsent = () => {
     localStorage.setItem('vibeloop_consent', TERMS_VERSION);
@@ -133,6 +151,7 @@ export default function App() {
         setWalletBalance(data.balance);
         setBoostUntil(data.boostUntil);
         if (data.boostPrice) setBoostPrice(data.boostPrice);
+        if (data.rewards) setRewards(data.rewards);
         setM2eEarned(data.m2eEarnedToday);
         setSecondsUntilReward(data.secondsUntilNextReward);
       })
@@ -178,9 +197,10 @@ export default function App() {
     };
   }, [socket]);
 
-  // Each new partner starts with an empty chat
+  // Each new partner starts with an empty chat and a fresh like
   useEffect(() => {
     setMessages([]);
+    setHasLiked(false);
   }, [peer?.id]);
 
   // Meet-to-Earn: ping while in a call; the server measures the actual call time
@@ -215,6 +235,28 @@ export default function App() {
 
     const onSafetyError = ({ error }) => showNotice(error, true);
 
+    const onPeerLikes = (counts) => setPeerLikes(counts);
+    const onLiked = ({ by, likes }) => {
+      setLikeBurst({ id: Date.now(), received: true });
+      showNotice(`❤️ ${by} liked you!`);
+      // Our own total, shown in Profile
+      setCurrentUser((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, likes };
+        localStorage.setItem('vibeloop_user', JSON.stringify(next));
+        return next;
+      });
+    };
+    const onLikeError = ({ error }) => {
+      setHasLiked(false);
+      showNotice(error, true);
+    };
+
+    // The hook goes idle when a friend hangs up; say so instead of silently resetting
+    const onPartnerLeft = () => {
+      if (isFriendCallRef.current) showNotice('Call ended.');
+    };
+
     // Top-ups confirmed by the payment webhook (e.g. after the checkout window closed)
     const onWalletUpdated = ({ balance }) => {
       if (typeof balance === 'number') setWalletBalance(balance);
@@ -226,6 +268,11 @@ export default function App() {
     socket.on('safety_ack', onSafetyAck);
     socket.on('safety_error', onSafetyError);
     socket.on('wallet_updated', onWalletUpdated);
+    socket.on('partner_left', onPartnerLeft);
+    socket.on('peer_likes', onPeerLikes);
+    socket.on('like_update', onPeerLikes);
+    socket.on('liked', onLiked);
+    socket.on('like_error', onLikeError);
     return () => {
       clearTimeout(giftTimeout);
       socket.off('m2e_progress', onProgress);
@@ -234,6 +281,11 @@ export default function App() {
       socket.off('safety_ack', onSafetyAck);
       socket.off('safety_error', onSafetyError);
       socket.off('wallet_updated', onWalletUpdated);
+      socket.off('partner_left', onPartnerLeft);
+      socket.off('peer_likes', onPeerLikes);
+      socket.off('like_update', onPeerLikes);
+      socket.off('liked', onLiked);
+      socket.off('like_error', onLikeError);
     };
   }, [socket, fetchHistory, showNotice]);
 
@@ -252,12 +304,42 @@ export default function App() {
 
   const handleLogout = () => {
     stop();
+    setIsProfileOpen(false);
+    setIsFriendsOpen(false);
     clearSession();
   };
 
-  const handleAuthSuccess = (user, tok, upgraded) => {
+  const handleAuthSuccess = (user, tok, upgraded, bonus) => {
     persistSession(user, tok);
-    if (upgraded) showNotice('Account created. Your VIBE, history and contacts came with you.');
+    const bonusText = bonus > 0 ? ` +${bonus} VIBE welcome bonus added.` : '';
+    if (upgraded) showNotice(`Account created. Your VIBE and history came with you.${bonusText}`);
+    else if (bonus > 0) showNotice(`Welcome to VibeLoop!${bonusText}`);
+  };
+
+  // Profile edits: a new token (country change) reconnects the socket with the updated claims
+  const handleProfileUpdated = (user, tok) => persistSession(user, tok || token);
+
+  const openAuth = (mode) => {
+    setAuthMode(mode);
+    setIsAuthModalOpen(true);
+  };
+
+  // Calling a friend leaves random matchmaking first
+  const handleCallFriend = (friend) => {
+    if (status !== 'idle') stop();
+    setIsFriendsOpen(false);
+    friends.callFriend(friend);
+  };
+
+  const handleAddPartner = async () => {
+    try {
+      const data = await friends.sendRequest({ userId: peer.id });
+      showNotice(data.status === 'accepted'
+        ? `You and ${data.friend.username} are now friends!`
+        : `Friend request sent to ${data.friend.username}.`);
+    } catch (err) {
+      showNotice(err.message, true);
+    }
   };
 
   // The server already closed our sockets; a fresh guest session is created automatically
@@ -289,6 +371,7 @@ export default function App() {
 
   // Start enters matchmaking; Stop leaves it (ending any call). Next skips to someone new.
   const handleStartStop = () => {
+    if (friends.outgoingCall) friends.cancelCall();
     if (status === 'idle') {
       findPartner(searchPreferences);
     } else {
@@ -298,6 +381,15 @@ export default function App() {
 
   const handleNext = () => {
     if (isMatched) findPartner(searchPreferences);
+  };
+
+  // One like per chat; the count updates right away and the server confirms the total
+  const handleLike = () => {
+    if (!socket || !isMatched || !peer || hasLiked) return;
+    setHasLiked(true);
+    setLikeBurst({ id: Date.now(), received: false });
+    setPeerLikes((prev) => (prev?.userId === peer.id ? { ...prev, likes: prev.likes + 1 } : prev));
+    socket.emit('like_partner');
   };
 
   const handleSendMessage = (text) => {
@@ -354,10 +446,20 @@ export default function App() {
     setSelfViewSide(side);
   };
 
+  const partnerRelation = peer && (
+    friends.friends.some((f) => f.id === peer.id) ? 'friend'
+      : friends.outgoing.some((f) => f.id === peer.id) ? 'requested'
+        : friends.incoming.some((f) => f.id === peer.id) ? 'incoming'
+          : null
+  );
+  const callingFriend = friends.incomingCall
+    ? friends.friends.find((f) => f.id === friends.incomingCall.from.id) || friends.incomingCall.from
+    : friends.outgoingCall?.friend;
+
   // Partner info sits on the side away from your camera tile
   const partnerSide = selfViewSide === 'right' ? 'left-3 sm:left-6 items-start' : 'right-3 sm:right-6 items-end';
   const filterSummary = [
-    isBoosted && preferences.targetGender !== 'any' ? (preferences.targetGender === 'female' ? 'Women' : 'Men') : null,
+    isBoosted && preferences.targetGender !== 'any' ? genderText(preferences.targetGender, { plural: true }) : null,
     preferences.targetCountry !== 'ALL'
       ? `${flagEmoji(preferences.targetCountry)} ${COUNTRIES.find((c) => c.code === preferences.targetCountry)?.name || preferences.targetCountry}`
       : null
@@ -374,13 +476,12 @@ export default function App() {
         m2eEarnedToday={m2eEarned}
         m2eDailyCap={10.0}
         secondsUntilNextReward={secondsUntilReward}
-        isCallActive={isMatched}
+        isCallActive={isMatched && !isFriendCall}
         currentUser={currentUser}
-        onOpenAuthModal={() => {
-          setAuthMode('login');
-          setIsAuthModalOpen(true);
-        }}
-        onLogout={handleLogout}
+        onOpenAuthModal={() => openAuth('login')}
+        onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenFriends={() => setIsFriendsOpen(true)}
+        friendsBadge={friends.badge}
         onOpenBoostModal={() => setIsBoostOpen(true)}
         boostMinutesLeft={minutesLeft(boostUntil)}
         onOpenRechargeModal={() => setIsWalletOpen(true)}
@@ -418,15 +519,16 @@ export default function App() {
               </h2>
               <p className="text-sm text-slate-400 mt-1.5 max-w-sm mx-auto">
                 {isMatched && peer
-                  ? `Matched with ${peer.username}${peer.gender ? ` · ${GENDER_LABEL[peer.gender]}` : ''}`
+                  ? <>Matched with {peer.username}{peer.gender && <> · <GenderLabel gender={peer.gender} /></>}</>
                   : status === 'searching'
                     ? 'Looking for someone who matches your filters.'
                     : 'Press START to meet new people around the globe. Earn VIBE tokens as you chat.'}
               </p>
             </div>
 
+            {/* On phones the Recent vibes strip needs this space */}
             {status === 'idle' && !stageError && (
-              <div className="flex flex-wrap justify-center gap-2 max-w-sm">
+              <div className={`${contacts.length > 0 ? 'hidden sm:flex' : 'flex'} flex-wrap justify-center gap-2 max-w-sm`}>
                 <span className="px-3 py-1.5 rounded-full bg-[#12151E]/80 border border-slate-800 text-[11px] font-semibold text-slate-300">⏱ 0.10 VIBE every 3 min</span>
                 <span className="px-3 py-1.5 rounded-full bg-[#12151E]/80 border border-slate-800 text-[11px] font-semibold text-slate-300">🎁 Send gifts</span>
                 <span className="px-3 py-1.5 rounded-full bg-[#12151E]/80 border border-slate-800 text-[11px] font-semibold text-slate-300">🛡️ Report &amp; block</span>
@@ -457,14 +559,43 @@ export default function App() {
           <span className="max-w-full truncate px-3 py-1.5 rounded-2xl bg-black/50 border border-white/10 backdrop-blur-xl text-xs font-bold text-white">
             {peer.country && peer.country !== 'ALL' ? `${flagEmoji(peer.country)} ` : ''}{peer.username}
           </span>
+          {isFriendCall && (
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 backdrop-blur-xl text-[11px] font-bold">
+              <Users size={12} /> Friend call
+            </span>
+          )}
+          {isRegistered && !isFriendCall && partnerRelation !== 'friend' && (
+            <button
+              onClick={partnerRelation === 'requested' ? undefined : handleAddPartner}
+              disabled={partnerRelation === 'requested'}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-[#12151E]/80 border border-[#00F0FF]/40 text-[#00F0FF] hover:bg-[#00F0FF]/10 backdrop-blur-xl text-xs font-bold shadow-lg transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-default"
+            >
+              <UserPlus size={13} />
+              <span>{partnerRelation === 'requested' ? 'Request sent' : partnerRelation === 'incoming' ? 'Accept friend' : 'Add friend'}</span>
+            </button>
+          )}
           {peer.boosted && (
-            <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] text-slate-950 text-[11px] font-extrabold shadow-lg">
-              🔥 Boosted
+            <span
+              title="VibeBoost active"
+              aria-label="VibeBoost active"
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-gradient-to-br from-[#FF2A7A] to-[#FF9E00] text-lg shadow-[0_0_18px_rgba(255,122,0,0.45)]"
+            >
+              🔥
+            </span>
+          )}
+          {peerLikes?.userId === peer.id && (
+            <span
+              key={peerLikes.likes}
+              aria-label={`${peerLikes.likes} likes`}
+              className="like-pop flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-black/50 border border-[#FF2A7A]/40 backdrop-blur-xl text-xs font-bold text-white"
+            >
+              <Heart size={13} className="text-[#FF2A7A] fill-[#FF2A7A]" />
+              {peerLikes.likes.toLocaleString()}
             </span>
           )}
           {peer.gender && (
-            <span className="px-2.5 py-1 rounded-xl bg-[#12151E]/80 border border-[#FF7A00]/40 text-[#FF9E00] backdrop-blur-xl text-[11px] font-bold">
-              {GENDER_LABEL[peer.gender]}
+            <span className="w-9 h-9 flex items-center justify-center rounded-full bg-black/50 border border-white/15 backdrop-blur-xl text-xl font-bold leading-none">
+              <GenderLabel gender={peer.gender} symbolOnly />
             </span>
           )}
           <button
@@ -489,8 +620,8 @@ export default function App() {
         onToggleVideo={toggleVideo}
       />
 
-      {/* Recent contacts (20s+ calls), shown between calls */}
-      {!isMatched && (
+      {/* Recent contacts (20s+ calls), only while idle: before START or after STOP */}
+      {status === 'idle' && (
         <HistoryBar
           contacts={contacts}
           onSelect={(contact) => setGiftTarget({ id: contact.peerId, username: contact.username })}
@@ -511,7 +642,20 @@ export default function App() {
         onToggleChat={() => setIsChatOpen(!isChatOpen)}
         hasUnreadChat={messages.length > 0 && !isChatOpen}
         onGift={() => setGiftTarget(peer)}
+        onLike={handleLike}
+        hasLiked={hasLiked}
+        likePulse={likeBurst && !likeBurst.received ? likeBurst.id : 0}
       />
+
+      {/* Hearts rise from the like button when you like, from the middle of the screen when you are liked */}
+      {likeBurst && (
+        <LikeBurst
+          key={likeBurst.id}
+          className={likeBurst.received
+            ? 'left-1/2 bottom-1/3'
+            : 'left-1/2 bottom-[calc(6rem+env(safe-area-inset-bottom))]'}
+        />
+      )}
 
       {/* Toast notices (safety confirmations / errors) */}
       {notice && (
@@ -556,7 +700,57 @@ export default function App() {
         error={chatError}
         onSendMessage={handleSendMessage}
         currentUserId={currentUser?.id}
+        peerName={isMatched ? peer?.username : null}
+        canSend={isMatched}
       />
+
+      <FriendsPanel
+        isOpen={isFriendsOpen}
+        onClose={() => setIsFriendsOpen(false)}
+        isGuest={!isRegistered}
+        onRequireAccount={() => {
+          setIsFriendsOpen(false);
+          openAuth('register');
+        }}
+        friends={friends}
+        contacts={contacts}
+        currentUserId={currentUser?.id}
+        onCall={handleCallFriend}
+        inCall={isMatched}
+      />
+
+      {callingFriend && (
+        <CallOverlay
+          incoming={Boolean(friends.incomingCall)}
+          who={callingFriend}
+          inCall={isMatched}
+          onAccept={() => {
+            setIsFriendsOpen(false);
+            friends.answerCall(true);
+          }}
+          onDecline={() => friends.answerCall(false)}
+          onCancel={friends.cancelCall}
+        />
+      )}
+
+      {isProfileOpen && isRegistered && (
+        <ProfileModal
+          currentUser={currentUser}
+          token={token}
+          photoReward={rewards.PROFILE_PHOTO}
+          onClose={() => setIsProfileOpen(false)}
+          onUpdated={handleProfileUpdated}
+          onReward={(balance, amount) => {
+            setWalletBalance(balance);
+            showNotice(`+${amount} VIBE for adding a profile photo!`);
+          }}
+          onOpenAccount={() => {
+            setIsProfileOpen(false);
+            setIsAccountOpen(true);
+          }}
+          onLogout={handleLogout}
+        />
+      )}
 
       {isReportOpen && isMatched && (
         <ReportModal
@@ -589,6 +783,7 @@ export default function App() {
         token={token}
         isGuest={!currentUser || currentUser.isGuest}
         initialMode={authMode}
+        signupBonus={rewards.SIGNUP}
         onAuthSuccess={handleAuthSuccess}
       />
 

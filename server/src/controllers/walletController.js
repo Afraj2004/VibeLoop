@@ -1,7 +1,7 @@
 const db = require('../config/db');
 const meetToEarn = require('../services/meetToEarn');
 const boost = require('../services/boost');
-const { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, roundVibe } = require('../config/economy');
+const { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, REWARDS, roundVibe } = require('../config/economy');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -42,6 +42,7 @@ exports.getBalance = async (req, res) => {
       m2eRatePer3Min: M2E.REWARD_PER_CYCLE,
       boostUntil,
       boostPrice: BOOST.PRICE,
+      rewards: REWARDS,
       ...progress
     });
   } catch (err) {
