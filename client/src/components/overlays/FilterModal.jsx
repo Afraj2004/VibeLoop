@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import { X, SlidersHorizontal, Lock, Zap } from 'lucide-react';
-import { COUNTRIES, flagEmoji } from '../../utils/countries.js';
+import { X, SlidersHorizontal, Lock, Zap, MapPin } from 'lucide-react';
+import { COUNTRIES, countryName, flagEmoji } from '../../utils/countries.js';
+import GenderLabel from '../hud/GenderLabel.jsx';
 
 const TARGET_GENDERS = [
   { id: 'any', label: 'Everyone' },
-  { id: 'female', label: 'Women' },
-  { id: 'male', label: 'Men' }
+  { id: 'female', label: <GenderLabel gender="female" plural /> },
+  { id: 'male', label: <GenderLabel gender="male" plural /> }
 ];
 
 const OWN_GENDERS = [
-  { id: 'female', label: 'Woman' },
-  { id: 'male', label: 'Man' },
-  { id: 'other', label: 'Other' }
+  { id: 'female', label: <GenderLabel gender="female" /> },
+  { id: 'male', label: <GenderLabel gender="male" /> },
+  { id: 'other', label: <GenderLabel gender="other" /> }
 ];
 
 function SegmentedControl({ options, value, onChange }) {
@@ -124,7 +125,7 @@ export default function FilterModal({
           {ownGenderFixed ? (
             <div className="flex items-center justify-between gap-3 bg-[#08090D] border border-slate-800 rounded-2xl px-3 py-2.5">
               <span className="text-xs font-bold text-white">
-                {OWN_GENDERS.find((g) => g.id === gender)?.label || 'Other'}
+                <GenderLabel gender={gender} />
               </span>
               <span className="flex items-center gap-1 text-[10px] text-slate-500">
                 <Lock size={11} />
@@ -134,11 +135,23 @@ export default function FilterModal({
           ) : (
             <SegmentedControl options={OWN_GENDERS} value={gender} onChange={setGender} />
           )}
-          <CountrySelect value={country} onChange={setCountry} anyLabel="Prefer not to say" />
+          {ownGenderFixed ? (
+            <div className="flex items-center justify-between gap-3 bg-[#08090D] border border-slate-800 rounded-2xl px-3 py-2.5">
+              <span className="text-xs font-bold text-white truncate">
+                {flagEmoji(country)} {countryName(country)}
+              </span>
+              <span className="flex items-center gap-1 text-[10px] text-slate-500 shrink-0">
+                <MapPin size={11} />
+                From your location
+              </span>
+            </div>
+          ) : (
+            <CountrySelect value={country} onChange={setCountry} anyLabel="Prefer not to say" />
+          )}
         </div>
         <p className="text-[10px] text-slate-500 mb-5">
           {ownGenderFixed
-            ? 'Your gender is fixed once you register. Changing your country ends your current call.'
+            ? 'Your gender is fixed once you register. To update your country, use your location in Profile.'
             : 'People filtering by gender or country can only find you if you set these. Gender is locked once you create an account. Changing them ends your current call.'}
         </p>
 

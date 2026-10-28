@@ -12,12 +12,14 @@ const blocks = [];
 const matchRows = [];
 let banWrites = 0;
 
+const friendshipQueries = [];
 stubModule('config/db.js', {
   query: async (text, params = []) => {
     const sql = text.replace(/\s+/g, ' ');
     if (sql.includes('SELECT blocked_id FROM blocks')) return { rows: [] };
     if (sql.includes('SELECT banned_until FROM users')) return { rows: [] };
     if (sql.includes('SELECT boost_until FROM users')) return { rows: [] };
+    if (sql.includes('FROM friendships')) { friendshipQueries.push({ sql, params }); return { rows: [], rowCount: 0 }; }
     if (sql.includes('INSERT INTO blocks')) { blocks.push(params); return { rows: [] }; }
     if (sql.includes('INSERT INTO reports')) {
       reports.push({ reporter: params[0], reported: params[1], reason: params[2], ip: params[4] });
@@ -109,6 +111,8 @@ describe('history, blocking and reports', () => {
     await Promise.all([once(A, 'safety_ack'), once(B, 'partner_left'), A.emit('block_partner')]);
     assert.deepStrictEqual(await history.getHistory(A.userId), []);
     assert.strictEqual(blocks.length, 1);
+    // ...and unfriends them
+    assert.ok(friendshipQueries.some((q) => q.sql.startsWith('DELETE FROM friendships') && q.params.includes(B.userId)));
 
     let rematched = false;
     A.once('match_found', () => { rematched = true; });

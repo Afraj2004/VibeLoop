@@ -7,6 +7,8 @@ const userController = require('../controllers/userController');
 const accountController = require('../controllers/accountController');
 const adminController = require('../controllers/adminController');
 const paymentsController = require('../controllers/paymentsController');
+const profileController = require('../controllers/profileController');
+const friendsController = require('../controllers/friendsController');
 const requireAdmin = require('../middlewares/requireAdmin');
 const auth = require('../middlewares/auth');
 const optionalAuth = require('../middlewares/optionalAuth');
@@ -30,6 +32,43 @@ router.patch(
   rateLimit({ name: 'profile', limit: 20, windowSeconds: HOUR, by: 'user' }),
   authController.updateProfile
 );
+
+// Country from the device's location (sign-up preview, and later updates)
+router.post('/geo/country', rateLimit({ name: 'geo', limit: 30, windowSeconds: HOUR }), authController.detectCountry);
+router.patch(
+  '/profile/location',
+  auth,
+  rateLimit({ name: 'location', limit: 20, windowSeconds: HOUR, by: 'user' }),
+  authController.updateLocation
+);
+
+// Profile photo (first one earns VIBE). The upload route gets a larger body limit in server.js.
+router.put(
+  '/profile/avatar',
+  auth,
+  rateLimit({ name: 'avatar', limit: 10, windowSeconds: HOUR, by: 'user' }),
+  profileController.setAvatar
+);
+router.delete('/profile/avatar', auth, profileController.removeAvatar);
+router.get('/users/:id/avatar', profileController.getAvatar);
+
+// Friends, direct-message history (sending and calls go over the socket)
+router.get('/friends', auth, friendsController.list);
+router.post(
+  '/friends/requests',
+  auth,
+  rateLimit({ name: 'friend-request', limit: 30, windowSeconds: HOUR, by: 'user' }),
+  friendsController.sendRequest
+);
+router.post('/friends/:id/accept', auth, friendsController.accept);
+router.delete('/friends/:id', auth, friendsController.remove);
+router.get(
+  '/friends/:id/messages',
+  auth,
+  rateLimit({ name: 'friend-messages', limit: 300, windowSeconds: HOUR, by: 'user' }),
+  friendsController.messages
+);
+router.post('/friends/:id/read', auth, friendsController.markRead);
 
 // 20-second contact history
 router.get('/history', auth, userController.getHistory);

@@ -24,6 +24,12 @@ const BOOST = {
   DURATION_SECONDS: 60 * 60
 };
 
+// One-off grants: new sessions start at 0 VIBE
+const REWARDS = {
+  SIGNUP: 5, // creating an account (also when upgrading a guest session)
+  PROFILE_PHOTO: 1 // first profile photo
+};
+
 // VIBE top-up packs (prices in INR, GST inclusive). Sample values: tune before going live.
 const VIBE_PACKAGES = [
   { id: 'starter', vibe: 50, priceInr: 49 },
@@ -33,4 +39,4 @@ const VIBE_PACKAGES = [
 
 const roundVibe = (amount) => Math.round(amount * 100) / 100;
 
-module.exports = { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, VIBE_PACKAGES, roundVibe };
+module.exports = { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, REWARDS, VIBE_PACKAGES, roundVibe };

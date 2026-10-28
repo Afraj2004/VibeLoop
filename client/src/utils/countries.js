@@ -28,3 +28,21 @@ export function flagEmoji(code) {
   if (!/^[A-Z]{2}$/.test(code || '')) return '🌐';
   return String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
 }
+
+const displayNames = typeof Intl !== 'undefined' && Intl.DisplayNames
+  ? new Intl.DisplayNames(['en'], { type: 'region' })
+  : null;
+
+/**
+ * English name for any ISO country code (location can return countries outside COUNTRIES)
+ */
+export function countryName(code) {
+  if (!code || code === 'ALL') return 'Not set';
+  const listed = COUNTRIES.find((c) => c.code === code);
+  if (listed) return listed.name;
+  try {
+    return displayNames?.of(code) || code;
+  } catch {
+    return code;
+  }
+}

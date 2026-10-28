@@ -6,12 +6,20 @@ const meetToEarn = require('./meetToEarn');
 const history = require('./history');
 const moderation = require('./moderation');
 const boost = require('./boost');
+const friends = require('./friends');
+const likes = require('./likes');
 const { consume } = require('../middlewares/rateLimiter');
 
 // Skip-spam guard: bots cycling the queue get cut off; humans rarely skip more than once every few seconds
 const FIND_PARTNER_LIMIT = { limit: 40, windowSeconds: 60 };
 const CHAT_LIMIT = { limit: 15, windowSeconds: 10 };
 const REPORT_LIMIT = { limit: 10, windowSeconds: 60 * 60 };
+const CALL_LIMIT = { limit: 10, windowSeconds: 60 };
+
+// An unanswered friend call stops ringing after this long
+const CALL_RING_MS = 30 * 1000;
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * What a matched partner learns about you. Your boost earns you a flame badge; the viewer's
@@ -62,7 +70,8 @@ function registerSignaling(io) {
         id: claims.id,
         username: claims.username,
         gender: claims.gender || 'other',
-        country: claims.country || 'ALL'
+        country: claims.country || 'ALL',
+        isGuest: Boolean(claims.isGuest)
       };
       socket.data.partnerId = null;
       next();
@@ -75,12 +84,42 @@ function registerSignaling(io) {
     io.emit('online_count', io.of('/').sockets.size);
   };
 
+  const isOnline = (userId) => io.of('/').adapter.rooms.has(`user:${userId}`);
+
+  // Tells a user's friends they came online or went offline
+  function announcePresence(userId, online) {
+    friends
+      .listFriendIds(userId)
+      .then((ids) => ids.forEach((id) => io.to(`user:${id}`).emit('friend_presence', { userId, online })))
+      .catch((err) => console.error('[VibeLoop Friends] presence failed:', err.message));
+  }
+
+  // Ringing friend calls: callId -> { callId, callerSocketId, calleeId, timer }
+  const pendingCalls = new Map();
+
+  function takePendingCall(callId) {
+    const call = pendingCalls.get(callId);
+    if (!call) return null;
+    clearTimeout(call.timer);
+    pendingCalls.delete(callId);
+    const caller = io.sockets.sockets.get(call.callerSocketId);
+    if (caller) caller.data.outgoingCallId = null;
+    return { ...call, caller };
+  }
+
+  // Caller hung up (or disconnected) before an answer
+  function cancelOutgoingCall(socket) {
+    const call = takePendingCall(socket.data.outgoingCallId);
+    if (call) io.to(`user:${call.calleeId}`).emit('call_cancelled', { callId: call.callId });
+  }
+
   /**
    * Credits Meet-to-Earn for call time elapsed since the last accrual. Time is
    * measured on the server, so clients cannot inflate it.
    */
   function accrueCallTime(socket) {
-    if (!socket.data.partnerId) return;
+    // Calls between friends don't earn: two friends could otherwise farm VIBE together
+    if (!socket.data.partnerId || socket.data.friendCall) return;
 
     const now = Date.now();
     const seconds = (now - socket.data.lastAccrualAt) / 1000;
@@ -102,14 +141,18 @@ function registerSignaling(io) {
     if (!partnerId) return;
 
     const partner = io.sockets.sockets.get(partnerId);
+    const wasFriendCall = Boolean(socket.data.friendCall);
     accrueCallTime(socket);
     socket.data.partnerId = null;
+    socket.data.friendCall = false;
 
     if (partner && partner.data.partnerId === socket.id) {
       accrueCallTime(partner);
       partner.data.partnerId = null;
+      partner.data.friendCall = false;
       partner.emit('partner_left');
 
+      if (wasFriendCall) return;
       const durationSeconds = Math.floor((Date.now() - socket.data.connectedAt) / 1000);
       history
         .recordCall(socket.data.user, partner.data.user, durationSeconds)
@@ -137,12 +180,20 @@ function registerSignaling(io) {
     }
   }
 
-  function pair(initiator, receiver) {
+  /**
+   * Connects two sockets. `friendCall` marks a call placed to a friend rather than a random match.
+   */
+  function pair(initiator, receiver, { friendCall = false } = {}) {
     const roomId = crypto.randomUUID();
     const connectedAt = Date.now();
 
     initiator.data.partnerId = receiver.id;
     receiver.data.partnerId = initiator.id;
+    initiator.data.friendCall = friendCall;
+    receiver.data.friendCall = friendCall;
+    // One like per call, in each direction
+    initiator.data.likedPartner = false;
+    receiver.data.likedPartner = false;
     initiator.data.connectedAt = connectedAt;
     receiver.data.connectedAt = connectedAt;
     initiator.data.lastAccrualAt = connectedAt;
@@ -150,6 +201,7 @@ function registerSignaling(io) {
 
     receiver.emit('match_found', {
       roomId,
+      friendCall,
       isInitiator: false,
       peer: toPublicProfile(initiator.data.user, {
         boosted: Boolean(initiator.data.boosted),
@@ -158,12 +210,27 @@ function registerSignaling(io) {
     });
     initiator.emit('match_found', {
       roomId,
+      friendCall,
       isInitiator: true,
       peer: toPublicProfile(receiver.data.user, {
         boosted: Boolean(receiver.data.boosted),
         revealGender: Boolean(initiator.data.boosted)
       })
     });
+    sendLikeCounts(initiator, receiver);
+  }
+
+  // Sent right after match_found so pairing never waits on the database
+  function sendLikeCounts(a, b) {
+    const idA = a.data.user.id;
+    const idB = b.data.user.id;
+    likes
+      .getCounts([idA, idB])
+      .then((counts) => {
+        a.emit('peer_likes', { userId: idB, likes: counts[idB] || 0 });
+        b.emit('peer_likes', { userId: idA, likes: counts[idA] || 0 });
+      })
+      .catch((err) => console.error('[VibeLoop Likes] count fetch failed:', err.message));
   }
 
   function relayToPartner(socket, event, payload) {
@@ -177,6 +244,10 @@ function registerSignaling(io) {
     const user = socket.data.user;
     socket.join(`user:${user.id}`);
     broadcastOnlineCount();
+    // First open tab: friends see this user come online
+    if (!user.isGuest && io.of('/').adapter.rooms.get(`user:${user.id}`)?.size === 1) {
+      announcePresence(user.id, true);
+    }
 
     moderation
       .hydrateSafetyState(user.id)
@@ -330,6 +401,24 @@ function registerSignaling(io) {
       }
     });
 
+    // Like the current partner (once per call). Both sides get the new lifetime total.
+    socket.on('like_partner', async () => {
+      const partner = io.sockets.sockets.get(socket.data.partnerId);
+      if (!partner || socket.data.likedPartner) return;
+      socket.data.likedPartner = true;
+
+      const partnerId = partner.data.user.id;
+      try {
+        const total = await likes.addLike(partnerId);
+        socket.emit('like_update', { userId: partnerId, likes: total });
+        partner.emit('liked', { by: user.username, likes: total });
+      } catch (err) {
+        console.error('[VibeLoop Likes] like failed:', err.message);
+        socket.data.likedPartner = false;
+        socket.emit('like_error', { error: 'Could not send your like. Please try again.' });
+      }
+    });
+
     // Periodic client ping while in a call; the server decides how much time counts
     socket.on('m2e_heartbeat', () => accrueCallTime(socket));
 
@@ -349,9 +438,109 @@ function registerSignaling(io) {
       saveAndDeliverMessage(io, socket, { recipientId: partner.data.user.id, messageText });
     });
 
+    // Direct messages between friends, outside any call
+    socket.on('send_direct_message', async ({ friendId, messageText } = {}) => {
+      const fail = (error) => socket.emit('direct_message_error', { friendId, error });
+      if (user.isGuest) return fail('Create an account to message friends');
+      if (!UUID_PATTERN.test(friendId || '') || typeof messageText !== 'string' || !messageText.trim()) return;
+
+      try {
+        const { limit, windowSeconds } = CHAT_LIMIT;
+        const { allowed } = await consume(`chat:${user.id}`, limit, windowSeconds);
+        if (!allowed) return fail('Slow down! You are sending messages too quickly.');
+        if (!(await friends.areFriends(user.id, friendId))) return fail('You can only message friends');
+      } catch (err) {
+        console.error('[VibeLoop Friends] message check failed:', err.message);
+        return fail('Could not send your message. Please try again.');
+      }
+
+      saveAndDeliverMessage(io, socket, { recipientId: friendId, messageText, direct: true });
+    });
+
+    // Friend calls: ring every tab the friend has open; the first to answer takes the call
+    socket.on('call_friend', async ({ friendId } = {}) => {
+      const fail = (error) => socket.emit('call_error', { error });
+      if (user.isGuest) return fail('Create an account to call friends');
+      if (!UUID_PATTERN.test(friendId || '') || socket.data.outgoingCallId) return;
+
+      try {
+        const { limit, windowSeconds } = CALL_LIMIT;
+        const { allowed } = await consume(`call:${user.id}`, limit, windowSeconds);
+        if (!allowed) return fail("You're calling too often. Try again in a minute.");
+
+        const bannedUntil = await moderation.getBanExpiry(user.id);
+        if (bannedUntil) return fail(suspensionMessage(bannedUntil));
+        if (!(await friends.areFriends(user.id, friendId))) return fail('You can only call friends');
+        if (!isOnline(friendId)) return fail("They're offline right now. Send them a message instead.");
+        if (socket.data.outgoingCallId) return;
+
+        // Calling takes you out of the match pool and any current call
+        endCall(socket);
+        await matchmaker.removeUser(socket.id, user);
+
+        const callId = crypto.randomUUID();
+        const timer = setTimeout(() => {
+          if (!takePendingCall(callId)) return;
+          socket.emit('call_ended', { callId, reason: 'no_answer' });
+          io.to(`user:${friendId}`).emit('call_cancelled', { callId });
+        }, CALL_RING_MS);
+        pendingCalls.set(callId, { callId, callerSocketId: socket.id, calleeId: friendId, timer });
+        socket.data.outgoingCallId = callId;
+
+        io.to(`user:${friendId}`).emit('incoming_call', {
+          callId,
+          from: { id: user.id, username: user.username, country: user.country }
+        });
+        socket.emit('call_ringing', { callId, friendId });
+      } catch (err) {
+        console.error('[VibeLoop Friends] call failed:', err.message);
+        fail('Could not place the call. Please try again.');
+      }
+    });
+
+    socket.on('cancel_call', ({ callId } = {}) => {
+      if (callId && callId === socket.data.outgoingCallId) cancelOutgoingCall(socket);
+    });
+
+    socket.on('answer_call', async ({ callId, accept } = {}) => {
+      const pending = pendingCalls.get(callId);
+      if (!pending || pending.calleeId !== user.id) {
+        return socket.emit('call_cancelled', { callId });
+      }
+
+      const { caller } = takePendingCall(callId);
+      // The callee's other tabs stop ringing
+      socket.to(`user:${user.id}`).emit('call_cancelled', { callId });
+
+      if (!accept) {
+        caller?.emit('call_ended', { callId, reason: 'declined' });
+        return;
+      }
+      if (!caller?.connected) {
+        socket.emit('call_cancelled', { callId });
+        return;
+      }
+
+      endCall(socket);
+      endCall(caller);
+      try {
+        await Promise.all([
+          matchmaker.removeUser(socket.id, user),
+          matchmaker.removeUser(caller.id, caller.data.user)
+        ]);
+      } catch (err) {
+        console.error('[VibeLoop Friends] queue cleanup failed:', err.message);
+      }
+      pair(caller, socket, { friendCall: true });
+    });
+
     socket.on('disconnect', async () => {
       endCall(socket);
+      cancelOutgoingCall(socket);
       broadcastOnlineCount();
+      if (!user.isGuest && !isOnline(user.id)) {
+        announcePresence(user.id, false);
+      }
       try {
         await matchmaker.removeUser(socket.id, user);
       } catch (err) {
@@ -368,8 +557,8 @@ function registerSignaling(io) {
     io.in(`user:${userId}`).disconnectSockets(true);
   }
 
-  // Hooks for REST controllers (admin bans, account deletion)
-  return { enforceSuspension, disconnectUser };
+  // Hooks for REST controllers (admin bans, account deletion, friend presence)
+  return { enforceSuspension, disconnectUser, isOnline };
 }
 
 module.exports = { registerSignaling };

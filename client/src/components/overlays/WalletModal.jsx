@@ -13,6 +13,10 @@ function describe(tx) {
       return { label: 'VIBE top-up', Icon: Coins, tone: 'text-[#FFD166]' };
     case 'PURCHASE_BOOST':
       return { label: 'VibeBoost (1 hour)', Icon: Zap, tone: 'text-[#FF7A00]' };
+    case 'SIGNUP_BONUS':
+      return { label: 'Welcome bonus for signing up', Icon: Sparkles, tone: 'text-[#FFD166]' };
+    case 'PROFILE_PHOTO_BONUS':
+      return { label: 'Bonus for adding a profile photo', Icon: Sparkles, tone: 'text-[#FFD166]' };
     case 'RECEIVE_GIFT':
       return { label: `Received ${gift} from ${tx.counterparty || 'a deleted user'}`, Icon: ArrowDownLeft, tone: 'text-[#FFD166]', earned: true };
     default:

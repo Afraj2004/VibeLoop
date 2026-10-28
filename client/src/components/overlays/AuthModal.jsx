@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { X, User, Mail, Lock, Sparkles, LogIn, UserPlus } from 'lucide-react';
-import { COUNTRIES, flagEmoji } from '../../utils/countries.js';
+import { X, User, Mail, Lock, Sparkles, LogIn, UserPlus, MapPin, Loader2, Check } from 'lucide-react';
+import { countryName, flagEmoji } from '../../utils/countries.js';
+import { apiFetch } from '../../utils/api.js';
+import { genderText } from '../hud/GenderLabel.jsx';
+import { getLocation } from '../../utils/location.js';
 
-export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest, initialMode = 'login' }) {
+export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest, initialMode = 'login', signupBonus = 5 }) {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
-    gender: '',
-    country: 'ALL'
+    gender: ''
   });
+  // Country comes from the device location: { status: 'idle' | 'locating' | 'done', coords, country }
+  const [place, setPlace] = useState({ status: 'idle', coords: null, country: null });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -21,18 +25,36 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
 
   if (!isOpen) return null;
 
+  // Asks for location permission, then shows which country it resolves to (the server decides)
+  const detectCountry = async () => {
+    setError('');
+    setPlace((prev) => ({ ...prev, status: 'locating' }));
+    try {
+      const coords = await getLocation();
+      const { country } = await apiFetch('/api/geo/country', { method: 'POST', body: coords });
+      const next = { status: 'done', coords, country };
+      setPlace(next);
+      return next;
+    } catch (err) {
+      setPlace({ status: 'idle', coords: null, country: null });
+      throw err;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-    // Registration is only reachable after the app-wide age/terms gate has been accepted
-    const payload = isLogin
-      ? { email: formData.email, password: formData.password }
-      : { ...formData, ageConfirmed: true, termsAccepted: true };
-
     try {
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      let payload = { email: formData.email, password: formData.password };
+      if (!isLogin) {
+        const location = (place.coords ? place : await detectCountry()).coords;
+        // Registration is only reachable after the app-wide age/terms gate has been accepted
+        payload = { ...formData, location, ageConfirmed: true, termsAccepted: true };
+      }
+
       const res = await fetch(`${backendUrl}${endpoint}`, {
         method: 'POST',
         headers: {
@@ -51,7 +73,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
       // Save token and notify parent
       localStorage.setItem('vibeloop_token', data.token);
       localStorage.setItem('vibeloop_user', JSON.stringify(data.user));
-      onAuthSuccess(data.user, data.token, Boolean(data.upgraded));
+      onAuthSuccess(data.user, data.token, Boolean(data.upgraded), data.bonus || 0);
       onClose();
     } catch (err) {
       setError(err.message);
@@ -81,8 +103,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
                 {isLogin
                   ? 'Sign in to an existing account'
                   : isGuest
-                    ? 'Keep your VIBE, history and contacts from this session'
-                    : 'Join and receive 10 bonus VIBE'}
+                    ? `Keep this session's VIBE and history, plus ${signupBonus} bonus VIBE`
+                    : `Join and receive ${signupBonus} bonus VIBE`}
               </p>
             </div>
           </div>
@@ -187,27 +209,34 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
                   className={`w-full bg-[#08090D] border border-slate-800 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs outline-none ${formData.gender ? 'text-white' : 'text-slate-500'}`}
                 >
                   <option value="" disabled>Select...</option>
-                  <option value="female">Woman</option>
-                  <option value="male">Man</option>
-                  <option value="other">Other</option>
+                  <option value="female">{genderText('female')}</option>
+                  <option value="male">{genderText('male')}</option>
+                  <option value="other">{genderText('other')}</option>
                 </select>
               </div>
 
               <div>
                 <label className="text-[11px] text-slate-400 font-medium block mb-1">Country</label>
-                <select
-                  value={formData.country}
-                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                  className="w-full bg-[#08090D] border border-slate-800 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs text-white outline-none"
-                >
-                  <option value="ALL">{flagEmoji('ALL')} Prefer not to say</option>
-                  {COUNTRIES.map((c) => (
-                    <option key={c.code} value={c.code}>{flagEmoji(c.code)} {c.name}</option>
-                  ))}
-                </select>
+                {place.status === 'done' ? (
+                  <div className="flex items-center gap-2 bg-[#08090D] border border-emerald-500/40 rounded-xl px-3 py-2.5 text-xs text-white">
+                    <span>{flagEmoji(place.country)}</span>
+                    <span className="truncate flex-1">{countryName(place.country)}</span>
+                    <Check size={14} className="text-emerald-400 shrink-0" />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => detectCountry().catch((err) => setError(err.message))}
+                    disabled={place.status === 'locating'}
+                    className="w-full flex items-center justify-center gap-1.5 bg-[#08090D] border border-[#00F0FF]/40 hover:bg-[#00F0FF]/10 rounded-xl px-3 py-2.5 text-xs font-bold text-[#00F0FF] cursor-pointer disabled:opacity-60"
+                  >
+                    {place.status === 'locating' ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />}
+                    {place.status === 'locating' ? 'Locating...' : 'Use my location'}
+                  </button>
+                )}
               </div>
               <p className="col-span-2 text-[10px] text-slate-500">
-                Your gender can't be changed after sign-up. It's used by match filters.
+                Gender can't be changed after sign-up. Your country is set from your location (only the country is saved, never where you are).
               </p>
             </div>
           )}

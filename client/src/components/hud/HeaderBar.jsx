@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Zap, Sparkles, Coins, Users, LogIn, LogOut, User } from 'lucide-react';
+import { Zap, Sparkles, Coins, Users, LogIn, UserPlus } from 'lucide-react';
+import Avatar from './Avatar.jsx';
 
 export default function HeaderBar({
   onlineCount = 1240,
@@ -10,7 +11,9 @@ export default function HeaderBar({
   isCallActive = false,
   currentUser = null,
   onOpenAuthModal,
-  onLogout,
+  onOpenProfile,
+  onOpenFriends,
+  friendsBadge = 0,
   onOpenBoostModal,
   onOpenRechargeModal,
   boostMinutesLeft = 0
@@ -85,64 +88,73 @@ export default function HeaderBar({
         <span className="text-[10px] font-mono text-slate-400">
           <span className="text-[#00F0FF] font-bold">{m2eEarnedToday.toFixed(2)}</span>/{m2eDailyCap.toFixed(0)}
         </span>
-        {/* Phones have no room for the BOOST button on the right */}
-        <button
-          onClick={onOpenBoostModal}
-          aria-label="VibeBoost"
-          className="ml-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] text-slate-950 text-[10px] font-extrabold cursor-pointer"
-        >
-          <Zap size={10} className="fill-slate-950" />
-          {boostMinutesLeft > 0 && <span>{boostMinutesLeft}m</span>}
-        </button>
       </div>
 
-      {/* Right: Wallet Balance & User Auth Pill */}
-      <div className="flex items-center gap-2 pointer-events-auto">
-        {/* Wallet Pill */}
-        <button 
+      {/* Right: wallet, boost, friends, profile. Icon-only on phones. */}
+      <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
+        <button
           onClick={onOpenRechargeModal}
           aria-label="Wallet"
-          className="flex items-center gap-2 bg-[#12151E]/90 hover:bg-slate-800/80 border border-slate-800 hover:border-[#FFD166]/40 px-3 py-1.5 rounded-2xl shadow-xl transition-all group"
+          className="flex items-center gap-1.5 sm:gap-2 bg-[#12151E]/90 hover:bg-slate-800/80 border border-slate-800 hover:border-[#FFD166]/40 px-2.5 sm:px-3 py-1.5 rounded-2xl shadow-xl transition-all group cursor-pointer"
         >
           <Coins size={14} className="text-[#FFD166] group-hover:rotate-12 transition-transform" />
           <div className="flex flex-col items-start leading-none">
-            <span className="text-[9px] text-slate-400 font-medium">Balance</span>
-            <span className="text-xs font-bold text-white tracking-wide whitespace-nowrap">{vibeBalance.toFixed(2)} VIBE</span>
+            <span className="hidden sm:block text-[9px] text-slate-400 font-medium">Balance</span>
+            <span className="text-xs font-bold text-white tracking-wide whitespace-nowrap">
+              {vibeBalance.toFixed(2)}<span className="hidden min-[400px]:inline"> VIBE</span>
+            </span>
           </div>
         </button>
 
-        {/* User Status / Login Button */}
+        <button
+          onClick={onOpenBoostModal}
+          aria-label="VibeBoost"
+          title="VibeBoost"
+          className="flex items-center gap-1.5 bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] hover:opacity-90 text-slate-950 p-2 sm:px-3 sm:py-1.5 rounded-2xl text-xs font-extrabold shadow-[0_0_15px_rgba(255,42,122,0.3)] transition-all active:scale-95 cursor-pointer"
+        >
+          <Zap size={14} className="fill-slate-950" />
+          {boostMinutesLeft > 0 ? (
+            <span>{boostMinutesLeft}m</span>
+          ) : (
+            <span className="hidden sm:inline">BOOST</span>
+          )}
+        </button>
+
+        <button
+          onClick={onOpenFriends}
+          aria-label={friendsBadge > 0 ? `Friends (${friendsBadge} new)` : 'Friends'}
+          title="Friends"
+          className="relative p-2 rounded-2xl bg-[#12151E]/90 hover:bg-slate-800/90 border border-slate-800 hover:border-[#00F0FF]/40 text-[#00F0FF] shadow-xl transition-all active:scale-95 cursor-pointer"
+        >
+          <Users size={14} />
+          {friendsBadge > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-[#FF2A7A] text-[9px] font-black text-white flex items-center justify-center">
+              {friendsBadge > 9 ? '9+' : friendsBadge}
+            </span>
+          )}
+        </button>
+
         {currentUser && !currentUser.isGuest ? (
-          <div className="flex items-center gap-1.5 bg-[#12151E]/90 border border-slate-800 px-3 py-1.5 rounded-2xl shadow-xl text-xs">
-            <User size={13} className="text-[#00F0FF]" />
-            <span className="font-bold text-white max-w-[80px] truncate">{currentUser.username}</span>
-            <button
-              onClick={onLogout}
-              title="Sign Out"
-              className="ml-1 text-slate-500 hover:text-red-400 transition-colors"
-            >
-              <LogOut size={13} />
-            </button>
-          </div>
+          <button
+            onClick={onOpenProfile}
+            aria-label="Your profile"
+            title={currentUser.username}
+            className="flex items-center gap-2 rounded-2xl sm:bg-[#12151E]/90 sm:border sm:border-slate-800 hover:border-[#00F0FF]/40 sm:pl-1 sm:pr-3 sm:py-1 shadow-xl transition-all active:scale-95 cursor-pointer"
+          >
+            <Avatar user={currentUser} size={30} />
+            <span className="hidden md:inline text-xs font-bold text-white max-w-[90px] truncate">{currentUser.username}</span>
+          </button>
         ) : (
           <button
             onClick={onOpenAuthModal}
-          aria-label="Sign in"
-            className="flex items-center gap-1.5 bg-[#12151E]/90 hover:bg-slate-800/90 border border-[#00F0FF]/40 text-[#00F0FF] px-3.5 py-1.5 rounded-2xl text-xs font-bold shadow-lg transition-all active:scale-95 cursor-pointer"
+            aria-label="Sign in"
+            className="flex items-center gap-1.5 bg-[#12151E]/90 hover:bg-slate-800/90 border border-[#00F0FF]/40 text-[#00F0FF] p-2 sm:px-3.5 sm:py-1.5 rounded-2xl text-xs font-bold shadow-lg transition-all active:scale-95 cursor-pointer"
           >
-            <LogIn size={13} />
-            <span className="hidden min-[360px]:inline whitespace-nowrap">Sign In</span>
+            <UserPlus size={14} className="sm:hidden" />
+            <LogIn size={13} className="hidden sm:block" />
+            <span className="hidden sm:inline whitespace-nowrap">Sign In</span>
           </button>
         )}
-
-        {/* Boost Button */}
-        <button
-          onClick={onOpenBoostModal}
-          className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-[#FF2A7A] to-[#FF9E00] hover:opacity-90 text-slate-950 px-3 py-1.5 rounded-2xl text-xs font-extrabold shadow-[0_0_15px_rgba(255,42,122,0.3)] transition-all active:scale-95 cursor-pointer"
-        >
-          <Zap size={13} className="fill-slate-950" />
-          <span>{boostMinutesLeft > 0 ? `${boostMinutesLeft}m` : 'BOOST'}</span>
-        </button>
       </div>
 
     </header>

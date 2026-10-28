@@ -11,10 +11,10 @@ exports.exportData = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const [profile, transactions, matches, messages, reportsFiled, blocks, purchases, recentContacts] = await Promise.all([
+    const [profile, transactions, matches, messages, reportsFiled, blocks, purchases, recentContacts, friendships] = await Promise.all([
       db.query(
         `SELECT id, username, email, gender, country_code, is_guest, vibe_balance, earned_balance,
-                daily_earned_tokens, last_earned_date, age_confirmed_at, terms_accepted_at,
+                daily_earned_tokens, last_earned_date, avatar_updated_at, age_confirmed_at, terms_accepted_at,
                 terms_version, banned_until, created_at
          FROM users WHERE id = $1`,
         [userId]
@@ -55,7 +55,14 @@ exports.exportData = async (req, res) => {
          FROM payments WHERE user_id = $1 ORDER BY created_at DESC`,
         [userId]
       ),
-      history.getHistory(userId)
+      history.getHistory(userId),
+      db.query(
+        `SELECT u.username, f.status, f.requester_id = $1 AS requested_by_you, f.created_at, f.accepted_at
+         FROM friendships f
+         LEFT JOIN users u ON u.id = CASE WHEN f.requester_id = $1 THEN f.addressee_id ELSE f.requester_id END
+         WHERE f.requester_id = $1 OR f.addressee_id = $1 ORDER BY f.created_at DESC`,
+        [userId]
+      )
     ]);
 
     if (!profile.rows[0]) {
@@ -75,7 +82,8 @@ exports.exportData = async (req, res) => {
       messages: messages.rows,
       reportsYouFiled: reportsFiled.rows,
       usersYouBlocked: blocks.rows,
-      purchases: purchases.rows
+      purchases: purchases.rows,
+      friends: friendships.rows
     });
   } catch (err) {
     console.error('Data Export Error:', err);

@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const redis = require('../config/redis');
 const history = require('./history');
+const friends = require('./friends');
 
 const REPORT_REASONS = ['nudity', 'harassment', 'underage', 'spam', 'violence', 'other'];
 
@@ -39,6 +40,8 @@ async function blockUser(blockerId, blockedId) {
     'INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
     [blockerId, blockedId]
   );
+  // A block also ends any friendship or pending request between them
+  await friends.removeFriendship(blockerId, blockedId);
 }
 
 async function banUser(userId, seconds = BAN_SECONDS) {

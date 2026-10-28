@@ -107,7 +107,8 @@ export const PRIVACY = {
       heading: '2. Data we collect',
       bullets: [
         'Account: username, and if you register, your email address and a hashed password. Guests get a randomly generated username.',
-        'Profile you choose to set: gender and country, used only for match filters.',
+        'Profile: your gender (chosen at sign-up) and your country, used for match filters. For accounts, the country is worked out from your device location, with your permission, at sign-up and whenever you update it. Your coordinates are used once on our server to find the country and are never stored or shared.',
+        'Optional profile photo, likes you have received, and your friends list and messages with friends (the last 30 messages per friend are kept).',
         'Consent records: when you confirmed you are 18+ and accepted the Terms, and which version.',
         'Activity: who you were matched with for 20 seconds or more and for how long; in-call chat messages (only the last 30 per conversation are kept); VIBE token balances and transactions; gifts sent and received.',
         'Safety: reports you file (including your IP address at the time, used to stop fake mass-reporting), reports about you, blocks, and any suspensions.',

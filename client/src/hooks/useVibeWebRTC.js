@@ -5,6 +5,7 @@ import FALLBACK_RTC_CONFIG, { getIceServerConfig, ICE_REFRESH_MS } from '../util
  * Camera capture + RTCPeerConnection negotiation over the signaling socket.
  *
  * status: 'idle' (not looking), 'searching' (in the match pool), 'connected' (matched with `peer`)
+ * isFriendCall: the current call was placed to/from a friend. When it ends we go idle instead of searching.
  * The camera is only requested once `mediaEnabled` is true (after the age/terms gate).
  */
 export function useVibeWebRTC(socket, token, mediaEnabled = true) {
@@ -14,6 +15,7 @@ export function useVibeWebRTC(socket, token, mediaEnabled = true) {
   const [peer, setPeer] = useState(null);
   const [mediaError, setMediaError] = useState(null);
   const [matchError, setMatchError] = useState(null);
+  const [isFriendCall, setIsFriendCall] = useState(false);
 
   const localStreamRef = useRef(null);
   const pcRef = useRef(null);
@@ -22,6 +24,7 @@ export function useVibeWebRTC(socket, token, mediaEnabled = true) {
   const preferencesRef = useRef({ targetGender: 'any', targetCountry: 'ALL' });
   const statusRef = useRef(status);
   statusRef.current = status;
+  const isFriendCallRef = useRef(false);
 
   // Acquire camera + microphone once allowed
   useEffect(() => {
@@ -79,6 +82,8 @@ export function useVibeWebRTC(socket, token, mediaEnabled = true) {
     pendingCandidatesRef.current = [];
     setRemoteStream(null);
     setPeer(null);
+    isFriendCallRef.current = false;
+    setIsFriendCall(false);
   }, []);
 
   /**
@@ -105,6 +110,18 @@ export function useVibeWebRTC(socket, token, mediaEnabled = true) {
 
   const findPartnerRef = useRef(findPartner);
   findPartnerRef.current = findPartner;
+
+  // A call ended underneath us: friend calls go idle, random calls look for the next person
+  const afterCallEnded = useCallback(() => {
+    if (isFriendCallRef.current) {
+      closePeerConnection();
+      setStatus('idle');
+    } else {
+      findPartnerRef.current();
+    }
+  }, [closePeerConnection]);
+  const afterCallEndedRef = useRef(afterCallEnded);
+  afterCallEndedRef.current = afterCallEnded;
 
   useEffect(() => {
     if (!socket) return;
@@ -133,7 +150,7 @@ export function useVibeWebRTC(socket, token, mediaEnabled = true) {
 
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'failed') {
-          findPartnerRef.current();
+          afterCallEndedRef.current();
         }
       };
 
@@ -157,14 +174,17 @@ export function useVibeWebRTC(socket, token, mediaEnabled = true) {
       }
     };
 
-    const onMatchFound = logErrors(async ({ isInitiator, peer: matchedPeer }) => {
-      // The user stopped searching before this match arrived: release the partner
-      if (statusRef.current === 'idle') {
+    const onMatchFound = logErrors(async ({ isInitiator, peer: matchedPeer, friendCall = false }) => {
+      // The user stopped searching before this match arrived: release the partner.
+      // Friend calls were explicitly accepted, so they connect from idle.
+      if (statusRef.current === 'idle' && !friendCall) {
         socket.emit('leave');
         return;
       }
 
       closePeerConnection();
+      isFriendCallRef.current = friendCall;
+      setIsFriendCall(friendCall);
       setPeer(matchedPeer);
       setStatus('connected');
 
@@ -202,8 +222,8 @@ export function useVibeWebRTC(socket, token, mediaEnabled = true) {
       }
     });
 
-    // Partner skipped or disconnected: go straight back into the pool
-    const onPartnerLeft = () => findPartnerRef.current();
+    // Partner skipped or disconnected: back into the pool (or idle, after a friend call)
+    const onPartnerLeft = () => afterCallEndedRef.current();
 
     const onMatchError = ({ error }) => {
       console.error('[VibeLoop Match]', error);
@@ -231,5 +251,5 @@ export function useVibeWebRTC(socket, token, mediaEnabled = true) {
     };
   }, [socket, closePeerConnection]);
 
-  return { localStream, remoteStream, status, peer, mediaError, matchError, findPartner, stop };
+  return { localStream, remoteStream, status, peer, isFriendCall, mediaError, matchError, findPartner, stop };
 }

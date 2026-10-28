@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Mic, MicOff, Video, VideoOff, Play, Square, SkipForward, SlidersHorizontal, MessageSquare, Gift
+  Mic, MicOff, Video, VideoOff, Play, Square, SkipForward, SlidersHorizontal, MessageSquare, Gift, Heart
 } from 'lucide-react';
 
 const ICON_BUTTON = 'shrink-0 p-2.5 min-[400px]:p-3 sm:p-4 rounded-2xl backdrop-blur-xl border transition-all shadow-lg active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100';
@@ -11,12 +11,13 @@ const PRIMARY = 'bg-gradient-to-r from-[#00F0FF] to-[#FF2A7A] hover:opacity-95 t
 
 /**
  * Bottom controls. Start/Stop enters or leaves matchmaking; Next skips to someone new.
- * On phones the mic/camera toggles live on the self-view tile instead.
+ * On phones the mic/camera toggles live on the self-view tile instead, and during a call
+ * the Like button takes the filter button's place.
  */
 export default function ControlBar({
   status, canStart, onStartStop, onNext,
   isAudioOn, isVideoOn, onToggleAudio, onToggleVideo,
-  onOpenFilters, filtersActive, onToggleChat, hasUnreadChat, onGift
+  onOpenFilters, filtersActive, onToggleChat, hasUnreadChat, onGift, onLike, hasLiked, likePulse = 0
 }) {
   const isIdle = status === 'idle';
   const isMatched = status === 'connected';
@@ -45,7 +46,7 @@ export default function ControlBar({
         onClick={onOpenFilters}
         aria-label="Match filters"
         title="Match filters"
-        className={`${ICON_BUTTON} ${NEUTRAL} relative`}
+        className={`${isMatched ? 'hidden sm:block' : ''} ${ICON_BUTTON} ${NEUTRAL} relative`}
       >
         <SlidersHorizontal size={20} />
         {filtersActive && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#00F0FF]" />}
@@ -86,6 +87,24 @@ export default function ControlBar({
         <span>NEXT</span>
         <SkipForward size={16} className={`hidden min-[400px]:block ${isMatched ? 'fill-slate-950' : ''}`} />
       </button>
+
+      {/* Like: once per chat. Remounting the icon (key) replays the pop animation. */}
+      {isMatched && (
+        <button
+          onClick={onLike}
+          disabled={hasLiked}
+          aria-label={hasLiked ? 'Liked' : 'Like'}
+          aria-pressed={hasLiked}
+          title={hasLiked ? 'You liked this chat' : 'Like'}
+          className={`${ICON_BUTTON} ${
+            hasLiked
+              ? 'bg-[#FF2A7A]/20 border-[#FF2A7A]/60 text-[#FF2A7A] disabled:opacity-100 disabled:cursor-default'
+              : 'bg-[#12151E]/90 hover:bg-[#FF2A7A]/10 border-[#FF2A7A]/40 text-[#FF7AA8]'
+          }`}
+        >
+          <Heart key={likePulse} size={20} className={`${hasLiked ? 'fill-current' : ''} ${likePulse ? 'like-pop' : ''}`} />
+        </button>
+      )}
 
       <button
         onClick={onToggleChat}
