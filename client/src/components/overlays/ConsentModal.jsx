@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShieldCheck, Check } from 'lucide-react';
 
 // Bump when the guidelines change so every user re-confirms
-export const TERMS_VERSION = '2026-10-11';
+export const TERMS_VERSION = '2026-10-29';
 
 const GUIDELINES = [
   'You must be 18 or older to use VibeLoop.',

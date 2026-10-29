@@ -1,7 +1,7 @@
 const db = require('../config/db');
 const moderation = require('../services/moderation');
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const { isId } = require('../config/ids');
 
 const BAN_DURATIONS = {
   '24h': 24 * 60 * 60,
@@ -25,7 +25,7 @@ async function logAction(adminId, userId, action, details = {}) {
 }
 
 function validUserId(req, res) {
-  if (!UUID_PATTERN.test(req.params.id)) {
+  if (!isId(req.params.id)) {
     res.status(400).json({ success: false, error: 'Invalid user id' });
     return false;
   }

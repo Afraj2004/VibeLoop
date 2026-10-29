@@ -4,6 +4,7 @@ import { countryName, flagEmoji } from '../../utils/countries.js';
 import { apiFetch } from '../../utils/api.js';
 import { genderText } from '../hud/GenderLabel.jsx';
 import { getLocation } from '../../utils/location.js';
+import VerifyEmailStep from './VerifyEmailStep.jsx';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest, initialMode = 'login', signupBonus = 5 }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -17,10 +18,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
   const [place, setPlace] = useState({ status: 'idle', coords: null, country: null });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Set once the server asks for the emailed code: { email, error }
+  const [verifying, setVerifying] = useState(null);
 
   // Each time the modal opens, start on the tab the caller asked for
   useEffect(() => {
-    if (isOpen) setIsLogin(initialMode === 'login');
+    if (isOpen) {
+      setIsLogin(initialMode === 'login');
+      setVerifying(null);
+    }
   }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
@@ -39,6 +45,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
       setPlace({ status: 'idle', coords: null, country: null });
       throw err;
     }
+  };
+
+  // Save the session and notify the parent
+  const completeSignIn = (data) => {
+    localStorage.setItem('vibeloop_token', data.token);
+    localStorage.setItem('vibeloop_user', JSON.stringify(data.user));
+    onAuthSuccess(data.user, data.token, Boolean(data.upgraded), data.bonus || 0);
+    setVerifying(null);
+    onClose();
   };
 
   const handleSubmit = async (e) => {
@@ -66,15 +81,16 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
       });
       const data = await res.json();
 
+      // Registration, or signing in to an unverified account: continue with the emailed code
+      if (data.needsVerification) {
+        setVerifying({ email: data.email || formData.email.trim(), error: data.emailError || '' });
+        return;
+      }
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Authentication failed');
       }
 
-      // Save token and notify parent
-      localStorage.setItem('vibeloop_token', data.token);
-      localStorage.setItem('vibeloop_user', JSON.stringify(data.user));
-      onAuthSuccess(data.user, data.token, Boolean(data.upgraded), data.bonus || 0);
-      onClose();
+      completeSignIn(data);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -116,6 +132,18 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
           </button>
         </div>
 
+        {verifying ? (
+          <VerifyEmailStep
+            email={verifying.email}
+            initialError={verifying.error}
+            onVerified={completeSignIn}
+            onBack={() => {
+              setVerifying(null);
+              setIsLogin(false);
+            }}
+          />
+        ) : (
+        <>
         {/* Tab Toggle */}
         <div className="flex bg-[#08090D] p-1 rounded-2xl mb-5 border border-slate-800">
           <button
@@ -270,11 +298,13 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
 
         {!isLogin && (
           <p className="mt-3 text-[10px] text-slate-500 text-center">
-            By creating an account you agree to the{' '}
+            We'll email you a code to confirm your address. By creating an account you agree to the{' '}
             <a href="/terms" target="_blank" rel="noreferrer" className="text-slate-300 hover:underline">Terms of Service</a>
             {' '}and{' '}
             <a href="/privacy" target="_blank" rel="noreferrer" className="text-slate-300 hover:underline">Privacy Policy</a>.
           </p>
+        )}
+        </>
         )}
       </div>
     </div>

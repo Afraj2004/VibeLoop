@@ -2,7 +2,9 @@ const db = require('../config/db');
 const { REWARDS } = require('../config/economy');
 const { USER_COLUMNS, toPublicUser } = require('./authController');
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const crypto = require('crypto');
+
+const AVATAR_KEY_PATTERN = /^[0-9a-f]{32}$/;
 const DATA_URL_PATTERN = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
 
 // The client crops and resizes to 256px before upload, so real photos are well under this
@@ -49,6 +51,7 @@ exports.setAvatar = async (req, res) => {
          UPDATE users
          SET avatar_url = $2,
              avatar_updated_at = NOW(),
+             avatar_key = $4,
              vibe_balance = vibe_balance + CASE WHEN avatar_rewarded_at IS NULL THEN $3 ELSE 0 END,
              avatar_rewarded_at = COALESCE(avatar_rewarded_at, NOW())
          WHERE id = $1 AND is_guest = FALSE
@@ -58,7 +61,13 @@ exports.setAvatar = async (req, res) => {
          SELECT id, $3, 'PROFILE_PHOTO_BONUS' FROM u WHERE rewarded
        )
        SELECT * FROM u`,
-      [req.user.id, `data:${image.type};base64,${image.bytes.toString('base64')}`, REWARDS.PROFILE_PHOTO]
+      [
+        req.user.id,
+        `data:${image.type};base64,${image.bytes.toString('base64')}`,
+        REWARDS.PROFILE_PHOTO,
+        // A new random key per upload: the URL can't be guessed from the user number, and caches can keep it forever
+        crypto.randomBytes(16).toString('hex')
+      ]
     );
     const user = rows[0];
     if (!user) {
@@ -83,7 +92,7 @@ exports.setAvatar = async (req, res) => {
 exports.removeAvatar = async (req, res) => {
   try {
     const { rows } = await db.query(
-      `UPDATE users SET avatar_url = NULL, avatar_updated_at = NULL WHERE id = $1 RETURNING ${USER_COLUMNS}`,
+      `UPDATE users SET avatar_url = NULL, avatar_updated_at = NULL, avatar_key = NULL WHERE id = $1 RETURNING ${USER_COLUMNS}`,
       [req.user.id]
     );
     if (!rows[0]) {
@@ -97,16 +106,16 @@ exports.removeAvatar = async (req, res) => {
 };
 
 /**
- * GET /api/users/:id/avatar?v=<avatarVersion>
- * Public image response. URLs carry the version, so they can be cached forever.
+ * GET /api/avatars/:key
+ * Public image response. Each upload gets a new random key, so responses can be cached forever.
  */
 exports.getAvatar = async (req, res) => {
-  if (!UUID_PATTERN.test(req.params.id)) {
+  if (!AVATAR_KEY_PATTERN.test(req.params.key)) {
     return res.status(404).json({ success: false, error: 'Not found' });
   }
 
   try {
-    const { rows } = await db.query('SELECT avatar_url FROM users WHERE id = $1', [req.params.id]);
+    const { rows } = await db.query('SELECT avatar_url FROM users WHERE avatar_key = $1', [req.params.key]);
     const image = parseImage(rows[0]?.avatar_url);
     if (!image) {
       return res.status(404).json({ success: false, error: 'Not found' });
@@ -114,7 +123,7 @@ exports.getAvatar = async (req, res) => {
 
     res.set({
       'Content-Type': image.type,
-      'Cache-Control': req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
+      'Cache-Control': 'public, max-age=31536000, immutable',
       'X-Content-Type-Options': 'nosniff',
       // Served from the API origin but embedded by the web app
       'Cross-Origin-Resource-Policy': 'cross-origin'

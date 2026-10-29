@@ -1,8 +1,8 @@
 // Terms of Service and Privacy Policy. Keep in sync with what the code actually does,
 // and bump TERMS_VERSION (components/overlays/ConsentModal.jsx) when changing them.
 
-export const LEGAL_CONTACT = 'support@vibeloop.com';
-export const LEGAL_EFFECTIVE_DATE = '11 October 2026';
+export const LEGAL_CONTACT = 'vibeloop.support@gmail.com';
+export const LEGAL_EFFECTIVE_DATE = '29 October 2026';
 
 export const TERMS = {
   title: 'Terms of Service',
@@ -106,7 +106,7 @@ export const PRIVACY = {
     {
       heading: '2. Data we collect',
       bullets: [
-        'Account: username, and if you register, your email address and a hashed password. Guests get a randomly generated username.',
+        'Account: username, and if you register, your email address and a hashed password. We email a one-time code to confirm the address belongs to you; only a scrambled (hashed) copy of the code is stored, and it expires after 15 minutes. Guests get a randomly generated username.',
         'Profile: your gender (chosen at sign-up) and your country, used for match filters. For accounts, the country is worked out from your device location, with your permission, at sign-up and whenever you update it. Your coordinates are used once on our server to find the country and are never stored or shared.',
         'Optional profile photo, likes you have received, and your friends list and messages with friends (the last 30 messages per friend are kept).',
         'Consent records: when you confirmed you are 18+ and accepted the Terms, and which version.',
@@ -129,7 +129,7 @@ export const PRIVACY = {
     {
       heading: '4. Who we share it with',
       paragraphs: [
-        'The person you are matched with sees your video, audio, username, country (if set) and chat messages. We use these service providers to run VibeLoop, who process data only on our instructions: Render (application hosting), Vercel (website hosting), Supabase (database), Upstash (in-memory data store), Cloudflare (call relay), Razorpay (payments) and Better Stack (uptime monitoring). Google\'s public STUN servers help your browser find a network route for calls. These providers may store data in India or other countries, including the United States. We may disclose data where required by law or to protect users\' safety.'
+        'The person you are matched with sees your video, audio, username, country (if set) and chat messages. We use these service providers to run VibeLoop, who process data only on our instructions: Render (application hosting), Vercel (website hosting), Supabase (database), Upstash (in-memory data store), Cloudflare (call relay), Razorpay (payments), Brevo (sending verification emails) and Better Stack (uptime monitoring). Google\'s public STUN servers help your browser find a network route for calls. These providers may store data in India or other countries, including the United States. We may disclose data where required by law or to protect users\' safety.'
       ]
     },
     {

@@ -3,11 +3,11 @@ import { BACKEND_URL } from './api.js';
 const AVATAR_SIZE = 256;
 
 /**
- * Public URL of a user's profile photo, or null. The version busts caches when the photo changes.
+ * Public URL of a user's profile photo, or null. Each upload gets a new random key.
  */
 export function avatarUrl(user) {
-  if (!user?.id || !user.avatarVersion) return null;
-  return `${BACKEND_URL}/api/users/${user.id}/avatar?v=${user.avatarVersion}`;
+  if (!user?.avatarKey) return null;
+  return `${BACKEND_URL}/api/avatars/${user.avatarKey}`;
 }
 
 /**

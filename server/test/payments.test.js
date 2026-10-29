@@ -8,8 +8,8 @@ const { srcPath, stubModule, stubRedis } = require('../test-support/harness');
 
 stubRedis();
 
-const BUYER = '55555555-5555-5555-5555-555555555555';
-const OTHER = '66666666-6666-6666-6666-666666666666';
+const BUYER = '55';
+const OTHER = '66';
 
 // ---- in-memory Postgres stand-in -------------------------------------------
 let paymentsTable = [];

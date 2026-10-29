@@ -1,13 +1,14 @@
-// Guest-to-account upgrade on registration, optional auth, and wallet transaction history
+// Registration with email verification (incl. guest upgrade), optional auth, and wallet transaction history
 const { describe, it, beforeEach } = require('node:test');
 const assert = require('node:assert');
+const bcrypt = require('bcryptjs');
 const { srcPath, stubModule, stubRedis } = require('../test-support/harness');
 
 stubRedis();
 
-const GUEST_ID = '11111111-1111-1111-1111-111111111111';
-const NEW_ID = '22222222-2222-2222-2222-222222222222';
-const OTHER_ID = '33333333-3333-3333-3333-333333333333';
+const GUEST_ID = '11';
+const NEW_ID = '22';
+const OTHER_ID = '33';
 
 let queries = [];
 let state = {};
@@ -19,18 +20,69 @@ function userRow(id, overrides = {}) {
   };
 }
 
+// Emails are captured instead of sent; codes are read from the subject line
+let sentEmails = [];
+let emailFails = false;
+stubModule('services/email.js', {
+  sendEmail: async (message) => {
+    if (emailFails) throw new Error('Brevo down');
+    sentEmails.push(message);
+  },
+  EmailError: class EmailError extends Error {},
+  SUPPORT_EMAIL: 'help@example.com'
+});
+const lastCode = () => sentEmails.at(-1).subject.slice(0, 6);
+
+const PASSWORD_HASH = bcrypt.hashSync('longenough1', 4);
+
+// The account row waiting for (or past) verification
+function pendingRow(id, overrides = {}) {
+  return {
+    ...userRow(id), password_hash: PASSWORD_HASH, email_verified_at: null, verification_code_hash: null,
+    verification_expires_at: null, verification_attempts: 0, verification_sent_at: null, ...overrides
+  };
+}
+
 stubModule('config/db.js', {
   query: async (text, params = []) => {
     const sql = text.replace(/\s+/g, ' ').trim();
     queries.push({ sql, params });
-    if (sql.startsWith('SELECT id FROM users WHERE (email')) return { rows: state.conflict ? [{ id: OTHER_ID }] : [] };
-    if (sql.startsWith('WITH u AS ( UPDATE users SET username')) return { rows: state.guestExists ? [userRow(params[0])] : [] };
-    if (sql.startsWith('WITH u AS ( INSERT INTO users (username, email')) return { rows: [userRow(NEW_ID, { vibe_balance: '5.00' })] };
+    if (sql.startsWith('SELECT id FROM users WHERE (LOWER(email)')) return { rows: state.conflict ? [{ id: OTHER_ID }] : [] };
+    if (sql.startsWith('UPDATE users SET username')) {
+      if (!state.guestExists) return { rows: [] };
+      state.account = pendingRow(params[0], { email: params[2], is_guest: true });
+      return { rows: [state.account] };
+    }
+    if (sql.startsWith('INSERT INTO users (username, email')) {
+      state.account = pendingRow(NEW_ID, { email: params[1], country_code: params[4] });
+      return { rows: [state.account] };
+    }
+    if (sql.startsWith('UPDATE users SET verification_code_hash')) {
+      Object.assign(state.account, {
+        verification_code_hash: params[1], verification_attempts: 0, verification_sent_at: new Date(),
+        verification_expires_at: new Date(Date.now() + params[2] * 60000)
+      });
+      return { rows: [] };
+    }
+    if (sql.startsWith('SELECT * FROM users WHERE LOWER(email) = LOWER($1)')) {
+      // A copy, like a real query result
+      return { rows: state.account && state.account.email === params[0].toLowerCase() ? [{ ...state.account }] : [] };
+    }
+    if (sql.startsWith('UPDATE users SET verification_attempts = verification_attempts + 1')) {
+      state.account.verification_attempts += 1;
+      return { rows: [] };
+    }
+    if (sql.startsWith('WITH prior AS')) {
+      if (state.account.email_verified_at) return { rows: [] };
+      state.account.email_verified_at = new Date();
+      const bonusPaid = !state.bonusAlreadyPaid;
+      return { rows: [userRow(params[0], { is_guest: false, vibe_balance: bonusPaid ? '17.40' : '12.40', bonus_paid: bonusPaid })] };
+    }
     if (sql.startsWith('WITH u AS ( UPDATE users SET avatar_url')) {
       if (!state.avatarUser) return { rows: [] };
       const first = !state.avatarUser.rewarded;
       state.avatarUser.rewarded = true;
-      return { rows: [userRow(params[0], { vibe_balance: first ? '1.00' : '1.00', avatar_updated_at: new Date(), rewarded: first })] };
+      return { rows: [userRow(params[0], { vibe_balance: first ? '1.00' : '1.00', avatar_updated_at: new Date(), avatar_key: params[3], rewarded: first })] };
     }
     if (sql.startsWith('SELECT t.id, t.amount')) return { rows: state.ledger };
     if (sql.startsWith('SELECT is_guest, gender, country_code FROM users')) return { rows: state.profile ? [state.profile] : [] };
@@ -83,64 +135,155 @@ describe('optional auth', () => {
   });
 });
 
-describe('registration from a guest session', () => {
+describe('registration', () => {
   beforeEach(() => {
     queries = [];
+    sentEmails = [];
+    emailFails = false;
     state = { conflict: false, guestExists: true, ledger: [] };
   });
 
-  it('upgrades the guest row in place, keeping its id and balance', async () => {
+  it('emails a code instead of signing in, keeping a guest a guest until verified', async () => {
     const { status, body } = await call(authController.register, {
       body: REGISTRATION,
       user: { id: GUEST_ID, isGuest: true }
     });
     assert.strictEqual(status, 201);
-    assert.strictEqual(body.upgraded, true);
-    assert.strictEqual(body.user.id, GUEST_ID);
-    assert.strictEqual(body.user.balance, '12.40');
-    assert.strictEqual(verifyToken(body.token).isGuest, false);
+    assert.strictEqual(body.needsVerification, true);
+    assert.strictEqual(body.token, undefined);
+    assert.strictEqual(body.user, undefined);
 
-    const update = queries.find((q) => q.sql.startsWith('WITH u AS ( UPDATE users SET username'));
+    const update = queries.find((q) => q.sql.startsWith('UPDATE users SET username'));
     assert.strictEqual(update.params[0], GUEST_ID);
     assert.match(update.sql, /WHERE id = \$1 AND is_guest = TRUE/);
+    assert.doesNotMatch(update.sql, /is_guest = FALSE|vibe_balance/);
     assert.ok(!queries.some((q) => q.sql.startsWith('INSERT INTO users')));
+
+    assert.strictEqual(sentEmails.length, 1);
+    assert.strictEqual(sentEmails[0].to, 'me@example.com');
+    assert.match(lastCode(), /^\d{6}$/);
+    // Only a hash of the code is stored
+    const stored = queries.find((q) => q.sql.startsWith('UPDATE users SET verification_code_hash'));
+    assert.ok(!JSON.stringify(stored.params).includes(lastCode()));
   });
 
-  it('excludes the guest\'s own row from the duplicate check', async () => {
-    await call(authController.register, { body: REGISTRATION, user: { id: GUEST_ID, isGuest: true } });
-    const check = queries.find((q) => q.sql.startsWith('SELECT id FROM users WHERE (email'));
+  it('normalises the email and excludes the guest\'s own row from the duplicate check', async () => {
+    await call(authController.register, { body: { ...REGISTRATION, email: ' Me@Example.com ' }, user: { id: GUEST_ID, isGuest: true } });
+    const check = queries.find((q) => q.sql.startsWith('SELECT id FROM users WHERE (LOWER(email)'));
     assert.deepStrictEqual(check.params, ['me@example.com', 'newname', GUEST_ID]);
   });
 
-  it('creates a fresh account when the guest row is gone', async () => {
+  it('creates a fresh pending account when the guest row is gone, or without a guest session', async () => {
     state.guestExists = false;
-    const { status, body } = await call(authController.register, {
-      body: REGISTRATION,
-      user: { id: GUEST_ID, isGuest: true }
-    });
-    assert.strictEqual(status, 201);
-    assert.strictEqual(body.user.id, NEW_ID);
-    assert.strictEqual(body.upgraded, undefined);
-  });
-
-  it('creates a fresh account without a guest session, and never upgrades a registered user', async () => {
-    let result = await call(authController.register, { body: REGISTRATION });
-    assert.strictEqual(result.body.user.id, NEW_ID);
+    let result = await call(authController.register, { body: REGISTRATION, user: { id: GUEST_ID, isGuest: true } });
+    assert.strictEqual(result.status, 201);
+    assert.ok(queries.some((q) => q.sql.startsWith('INSERT INTO users')));
 
     queries = [];
     result = await call(authController.register, { body: REGISTRATION, user: { id: OTHER_ID, isGuest: false } });
-    assert.strictEqual(result.body.user.id, NEW_ID);
-    assert.ok(!queries.some((q) => q.sql.includes('UPDATE users')));
+    assert.strictEqual(result.body.needsVerification, true);
+    assert.ok(!queries.some((q) => q.sql.startsWith('UPDATE users SET username')));
   });
 
   it('rejects an email or username taken by someone else', async () => {
     state.conflict = true;
-    const { status } = await call(authController.register, {
-      body: REGISTRATION,
-      user: { id: GUEST_ID, isGuest: true }
-    });
+    const { status } = await call(authController.register, { body: REGISTRATION, user: { id: GUEST_ID, isGuest: true } });
     assert.strictEqual(status, 400);
     assert.ok(!queries.some((q) => q.sql.includes('UPDATE users')));
+    assert.strictEqual(sentEmails.length, 0);
+  });
+
+  it('still creates the account when the email fails, and says to resend', async () => {
+    emailFails = true;
+    const { status, body } = await call(authController.register, { body: REGISTRATION });
+    assert.strictEqual(status, 201);
+    assert.match(body.emailError, /Resend code/);
+  });
+});
+
+describe('email verification', () => {
+  beforeEach(async () => {
+    queries = [];
+    sentEmails = [];
+    emailFails = false;
+    state = { conflict: false, guestExists: true, ledger: [] };
+    await call(authController.register, { body: REGISTRATION, user: { id: GUEST_ID, isGuest: true } });
+  });
+
+  const verify = (code, email = 'me@example.com') => call(authController.verifyEmail, { body: { email, code } });
+
+  it('counts wrong codes, then signs in with the right one and pays the bonus once', async () => {
+    const wrong = lastCode() === '000000' ? '111111' : '000000';
+    let result = await verify(wrong);
+    assert.strictEqual(result.status, 400);
+    assert.match(result.body.error, /4 tries left/);
+
+    result = await verify(lastCode(), 'ME@example.com');
+    assert.strictEqual(result.status, 200);
+    assert.strictEqual(result.body.bonus, REWARDS.SIGNUP);
+    assert.strictEqual(result.body.upgraded, true);
+    assert.strictEqual(result.body.user.id, GUEST_ID);
+    assert.strictEqual(verifyToken(result.body.token).isGuest, false);
+
+    const activate = queries.find((q) => q.sql.startsWith('WITH prior AS'));
+    assert.match(activate.sql, /transaction_type = 'SIGNUP_BONUS'/);
+    assert.match(activate.sql, /WHERE id = \$1 AND email_verified_at IS NULL/);
+
+    // The code can't be used twice
+    result = await verify(lastCode());
+    assert.strictEqual(result.status, 400);
+    assert.match(result.body.error, /already verified/);
+  });
+
+  it('does not pay the bonus to accounts that already received it', async () => {
+    state.bonusAlreadyPaid = true;
+    const { body } = await verify(lastCode());
+    assert.strictEqual(body.bonus, 0);
+  });
+
+  it('locks the code after 5 wrong tries and rejects expired codes', async () => {
+    const wrong = lastCode() === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5; i += 1) await verify(wrong);
+    let result = await verify(lastCode());
+    assert.strictEqual(result.status, 429);
+
+    state.account.verification_attempts = 0;
+    state.account.verification_expires_at = new Date(Date.now() - 1000);
+    result = await verify(lastCode());
+    assert.match(result.body.error, /expired/);
+  });
+
+  it('enforces a resend cooldown and answers the same for unknown emails', async () => {
+    let result = await call(authController.resendCode, { body: { email: 'me@example.com' } });
+    assert.strictEqual(result.status, 429);
+    assert.ok(result.body.retryAfter > 0);
+
+    state.account.verification_sent_at = new Date(Date.now() - 61000);
+    result = await call(authController.resendCode, { body: { email: 'me@example.com' } });
+    assert.strictEqual(result.status, 200);
+    assert.strictEqual(sentEmails.length, 2);
+
+    result = await call(authController.resendCode, { body: { email: 'nobody@example.com' } });
+    assert.deepStrictEqual(result.body, { success: true });
+  });
+
+  it('refuses to sign in until verified, then allows it', async () => {
+    const login = () => call(authController.login, { body: { email: 'me@example.com', password: 'longenough1' } });
+    let result = await login();
+    assert.strictEqual(result.status, 403);
+    assert.strictEqual(result.body.needsVerification, true);
+    assert.strictEqual(result.body.token, undefined);
+
+    await verify(lastCode());
+    result = await login();
+    assert.strictEqual(result.status, 200);
+    assert.ok(result.body.token);
+  });
+
+  it('treats sessions from before the integer-ID switch as signed out', () => {
+    const jwt = require('jsonwebtoken');
+    const old = jwt.sign({ id: '7a9e93e4-4eaa-4247-8cad-eef9a633e850', username: 'x' }, process.env.JWT_SECRET);
+    assert.throws(() => verifyToken(old));
   });
 });
 
@@ -148,22 +291,6 @@ describe('sign-up bonus', () => {
   beforeEach(() => {
     queries = [];
     state = { conflict: false, guestExists: true, ledger: [] };
-  });
-
-  it('credits the bonus with a ledger row in the same statement, for upgrades and fresh accounts', async () => {
-    const upgraded = await call(authController.register, { body: REGISTRATION, user: { id: GUEST_ID, isGuest: true } });
-    assert.strictEqual(upgraded.body.bonus, REWARDS.SIGNUP);
-    const update = queries.find((q) => q.sql.includes('UPDATE users SET username'));
-    assert.match(update.sql, /vibe_balance = vibe_balance \+ \$8/);
-    assert.match(update.sql, /INSERT INTO token_transactions .* 'SIGNUP_BONUS'/);
-    assert.strictEqual(update.params[7], REWARDS.SIGNUP);
-
-    queries = [];
-    const fresh = await call(authController.register, { body: REGISTRATION });
-    assert.strictEqual(fresh.body.bonus, REWARDS.SIGNUP);
-    const insert = queries.find((q) => q.sql.includes('INSERT INTO users'));
-    assert.match(insert.sql, /'SIGNUP_BONUS'/);
-    assert.strictEqual(insert.params[6], REWARDS.SIGNUP);
   });
 
   it('starts guests at 0 VIBE', async () => {
@@ -197,13 +324,16 @@ describe('profile photo', () => {
     let result = await call(profile.setAvatar, { body: { image: JPEG }, user: { id: OTHER_ID, isGuest: false } });
     assert.strictEqual(result.status, 200);
     assert.strictEqual(result.body.reward, REWARDS.PROFILE_PHOTO);
-    assert.ok(result.body.user.avatarVersion);
+    const firstKey = result.body.user.avatarKey;
+    assert.match(firstKey, /^[0-9a-f]{32}$/);
     const sql = queries[0].sql;
     assert.match(sql, /CASE WHEN avatar_rewarded_at IS NULL THEN \$3 ELSE 0 END/);
     assert.match(sql, /'PROFILE_PHOTO_BONUS' FROM u WHERE rewarded/);
 
     result = await call(profile.setAvatar, { body: { image: JPEG }, user: { id: OTHER_ID, isGuest: false } });
     assert.strictEqual(result.body.reward, 0);
+    // Every upload gets a new unguessable URL key
+    assert.notStrictEqual(result.body.user.avatarKey, firstKey);
   });
 
   it('rejects guests, non-images and mislabelled files', async () => {

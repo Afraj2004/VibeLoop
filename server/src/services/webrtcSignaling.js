@@ -19,7 +19,7 @@ const CALL_LIMIT = { limit: 10, windowSeconds: 60 };
 // An unanswered friend call stops ringing after this long
 const CALL_RING_MS = 30 * 1000;
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const { isId } = require('../config/ids');
 
 /**
  * What a matched partner learns about you. Your boost earns you a flame badge; the viewer's
@@ -67,7 +67,7 @@ function registerSignaling(io) {
     try {
       const claims = verifyToken(socket.handshake.auth?.token);
       socket.data.user = {
-        id: claims.id,
+        id: String(claims.id),
         username: claims.username,
         gender: claims.gender || 'other',
         country: claims.country || 'ALL',
@@ -439,10 +439,11 @@ function registerSignaling(io) {
     });
 
     // Direct messages between friends, outside any call
-    socket.on('send_direct_message', async ({ friendId, messageText } = {}) => {
+    socket.on('send_direct_message', async ({ friendId: rawFriendId, messageText } = {}) => {
+      const friendId = String(rawFriendId ?? '');
       const fail = (error) => socket.emit('direct_message_error', { friendId, error });
       if (user.isGuest) return fail('Create an account to message friends');
-      if (!UUID_PATTERN.test(friendId || '') || typeof messageText !== 'string' || !messageText.trim()) return;
+      if (!isId(friendId) || typeof messageText !== 'string' || !messageText.trim()) return;
 
       try {
         const { limit, windowSeconds } = CHAT_LIMIT;
@@ -458,10 +459,11 @@ function registerSignaling(io) {
     });
 
     // Friend calls: ring every tab the friend has open; the first to answer takes the call
-    socket.on('call_friend', async ({ friendId } = {}) => {
+    socket.on('call_friend', async ({ friendId: rawFriendId } = {}) => {
+      const friendId = String(rawFriendId ?? '');
       const fail = (error) => socket.emit('call_error', { error });
       if (user.isGuest) return fail('Create an account to call friends');
-      if (!UUID_PATTERN.test(friendId || '') || socket.data.outgoingCallId) return;
+      if (!isId(friendId) || socket.data.outgoingCallId) return;
 
       try {
         const { limit, windowSeconds } = CALL_LIMIT;

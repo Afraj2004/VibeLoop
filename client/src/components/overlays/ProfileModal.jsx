@@ -96,7 +96,7 @@ export default function ProfileModal({ currentUser, token, photoReward, onClose,
             <button
               onClick={() => fileRef.current?.click()}
               disabled={busy === 'photo'}
-              aria-label={currentUser.avatarVersion ? 'Change photo' : 'Add a photo'}
+              aria-label={currentUser.avatarKey ? 'Change photo' : 'Add a photo'}
               className="absolute bottom-0 right-0 p-2.5 rounded-full bg-[#00F0FF] text-slate-950 border-4 border-[#12151E] shadow-lg cursor-pointer disabled:opacity-60"
             >
               {busy === 'photo' ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
@@ -113,7 +113,7 @@ export default function ProfileModal({ currentUser, token, photoReward, onClose,
             </div>
           </div>
 
-          {!currentUser.photoRewardClaimed && !currentUser.avatarVersion && (
+          {!currentUser.photoRewardClaimed && !currentUser.avatarKey && (
             <button
               onClick={() => fileRef.current?.click()}
               className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[#FFD166]/10 border border-[#FFD166]/40 text-[#FFD166] text-xs font-bold cursor-pointer"
@@ -122,7 +122,7 @@ export default function ProfileModal({ currentUser, token, photoReward, onClose,
               Add a profile photo and earn +{photoReward} VIBE
             </button>
           )}
-          {currentUser.avatarVersion && (
+          {currentUser.avatarKey && (
             <button onClick={handleRemovePhoto} disabled={busy === 'photo'} className="text-[11px] text-slate-500 hover:text-red-400 cursor-pointer">
               Remove photo
             </button>

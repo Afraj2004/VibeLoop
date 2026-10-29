@@ -1,10 +1,9 @@
 const db = require('../config/db');
 const friends = require('../services/friends');
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const { isId } = require('../config/ids');
 const MESSAGE_LIMIT = 30;
 
-const avatarVersion = (row) => (row.avatar_updated_at ? new Date(row.avatar_updated_at).getTime() : null);
 
 // Tells every open tab of a user that their friends list changed
 function notify(req, userId, payload = {}) {
@@ -24,7 +23,7 @@ function requireAccount(req, res) {
 }
 
 function requireUuid(req, res) {
-  if (!UUID_PATTERN.test(req.params.id)) {
+  if (!isId(req.params.id)) {
     res.status(404).json({ success: false, error: 'Not found' });
     return false;
   }
@@ -40,7 +39,7 @@ exports.list = async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT f.status, f.requester_id = $1 AS outgoing, COALESCE(f.accepted_at, f.created_at) AS since,
-              u.id, u.username, u.country_code, u.avatar_updated_at,
+              u.id, u.username, u.country_code, u.avatar_key,
               (SELECT COUNT(*) FROM messages m
                WHERE m.sender_id = u.id AND m.recipient_id = $1 AND NOT m.is_read)::int AS unread
        FROM friendships f
@@ -54,7 +53,7 @@ exports.list = async (req, res) => {
       id: row.id,
       username: row.username,
       country: row.country_code,
-      avatarVersion: avatarVersion(row),
+      avatarKey: row.avatar_key,
       since: row.since
     });
 
@@ -82,8 +81,8 @@ exports.sendRequest = async (req, res) => {
   const { userId, username } = req.body || {};
 
   let lookup;
-  if (typeof userId === 'string' && UUID_PATTERN.test(userId)) {
-    lookup = ['SELECT id, username, is_guest FROM users WHERE id = $1', [userId]];
+  if (isId(userId)) {
+    lookup = ['SELECT id, username, is_guest FROM users WHERE id = $1', [String(userId)]];
   } else if (typeof username === 'string' && username.trim()) {
     lookup = ['SELECT id, username, is_guest FROM users WHERE LOWER(username) = LOWER($1)', [username.trim().slice(0, 32)]];
   } else {
@@ -95,7 +94,7 @@ exports.sendRequest = async (req, res) => {
     if (!target) {
       return res.status(404).json({ success: false, error: 'No one has that username' });
     }
-    if (target.id === me) {
+    if (String(target.id) === String(me)) {
       return res.status(400).json({ success: false, error: "You can't add yourself" });
     }
     if (target.is_guest) {
@@ -114,7 +113,7 @@ exports.sendRequest = async (req, res) => {
     if (existing?.status === 'accepted') {
       return res.status(409).json({ success: false, error: `You and ${target.username} are already friends` });
     }
-    if (existing && existing.requester_id === me) {
+    if (existing && String(existing.requester_id) === String(me)) {
       return res.status(409).json({ success: false, error: `You already sent ${target.username} a request` });
     }
 

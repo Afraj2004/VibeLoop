@@ -170,8 +170,8 @@ describe('friends over the socket', () => {
 
 describe('friend requests', () => {
   const friendsController = require(srcPath('controllers/friendsController.js'));
-  const ME = '00000000-0000-0000-0000-00000000aaaa';
-  const THEM = '00000000-0000-0000-0000-00000000bbbb';
+  const ME = '9001';
+  const THEM = '9002';
 
   function call(handler, req) {
     return new Promise((resolve) => {

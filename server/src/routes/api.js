@@ -25,6 +25,9 @@ router.post(
   authController.register
 );
 router.post('/auth/login', rateLimit({ name: 'login', limit: 10, windowSeconds: 15 * 60 }), authController.login);
+// Email verification (codes are also rate-limited per account inside the service)
+router.post('/auth/verify-email', rateLimit({ name: 'verify-email', limit: 30, windowSeconds: 15 * 60 }), authController.verifyEmail);
+router.post('/auth/resend-code', rateLimit({ name: 'resend-code', limit: 10, windowSeconds: HOUR }), authController.resendCode);
 router.get('/auth/me', auth, authController.getMe);
 router.patch(
   '/auth/profile',
@@ -50,7 +53,7 @@ router.put(
   profileController.setAvatar
 );
 router.delete('/profile/avatar', auth, profileController.removeAvatar);
-router.get('/users/:id/avatar', profileController.getAvatar);
+router.get('/avatars/:key', profileController.getAvatar);
 
 // Friends, direct-message history (sending and calls go over the socket)
 router.get('/friends', auth, friendsController.list);

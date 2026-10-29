@@ -1,10 +1,12 @@
 const crypto = require('crypto');
 const db = require('../config/db');
 
+const KEEP_PER_PAIR = 30;
+
 /**
- * Delivers a chat message in real time, then persists it while enforcing the
- * 30-message ephemeral limit per conversation pair. Persistence happens after
- * delivery so a slow or unavailable database never blocks live chat.
+ * Saves a chat message (the database assigns its ID), delivers it in real time, then enforces
+ * the 30-message ephemeral limit per conversation pair. If the database is unavailable the
+ * message is still delivered, with a temporary ID, so live chat keeps working.
  *
  * `direct`: a message between friends outside a call. It goes out as 'direct_message' to every
  * tab of both people and stays unread until the recipient opens the conversation.
@@ -17,15 +19,24 @@ async function saveAndDeliverMessage(io, socket, { recipientId, messageText, dir
     return socket.emit('chat_error', { error: 'Invalid message payload' });
   }
 
-  const message = {
-    id: crypto.randomUUID(),
-    sender_id: senderId,
-    recipient_id: recipientId,
-    body,
-    created_at: new Date().toISOString()
-  };
+  let message;
+  let saved = false;
+  try {
+    // In-call messages are read live; friends' messages wait until the conversation is opened
+    const { rows } = await db.query(
+      `INSERT INTO messages (sender_id, recipient_id, body, is_read)
+       VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+      [senderId, recipientId, body, !direct]
+    );
+    message = { id: String(rows[0].id), created_at: new Date(rows[0].created_at).toISOString() };
+    saved = true;
+  } catch (err) {
+    console.error('[Chat Error] Failed to persist message:', err.message);
+    message = { id: `tmp-${crypto.randomUUID()}`, created_at: new Date().toISOString() };
+  }
+  message = { ...message, sender_id: senderId, recipient_id: String(recipientId), body };
 
-  // 1. Deliver to every socket the recipient has open, and echo back to sender
+  // Deliver to every socket the recipient has open, and echo back to sender
   if (direct) {
     io.to(`user:${recipientId}`).to(`user:${senderId}`).emit('direct_message', message);
   } else {
@@ -33,28 +44,22 @@ async function saveAndDeliverMessage(io, socket, { recipientId, messageText, dir
     socket.emit('message_sent', message);
   }
 
+  if (!saved) return;
   try {
-    // 2. Persist message to PostgreSQL
-    await db.query(
-      `INSERT INTO messages (id, sender_id, recipient_id, body, created_at, is_read)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [message.id, senderId, recipientId, body, message.created_at, !direct]
-    );
-
-    // 3. Enforce ephemeral retention cap (Keep only last 30 messages between these two users)
+    // Keep only the newest messages between these two users
     await db.query(
       `DELETE FROM messages
-       WHERE id NOT IN (
-         SELECT id FROM messages
-         WHERE (sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1)
-         ORDER BY created_at DESC
-         LIMIT 30
-       )
-       AND ((sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1))`,
+       WHERE ((sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1))
+         AND id NOT IN (
+           SELECT id FROM messages
+           WHERE (sender_id = $1 AND recipient_id = $2) OR (sender_id = $2 AND recipient_id = $1)
+           ORDER BY created_at DESC, id DESC
+           LIMIT ${KEEP_PER_PAIR}
+         )`,
       [senderId, recipientId]
     );
   } catch (err) {
-    console.error('[Chat Error] Failed to persist message:', err.message);
+    console.error('[Chat Error] Failed to trim messages:', err.message);
   }
 }
 
