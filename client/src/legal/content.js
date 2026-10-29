@@ -1,7 +1,7 @@
 // Terms of Service and Privacy Policy. Keep in sync with what the code actually does,
 // and bump TERMS_VERSION (components/overlays/ConsentModal.jsx) when changing them.
 
-export const LEGAL_CONTACT = 'support@vibeloop.com';
+export const LEGAL_CONTACT = 'vibeloop.support@gmail.com';
 export const LEGAL_EFFECTIVE_DATE = '29 October 2026';
 
 export const TERMS = {

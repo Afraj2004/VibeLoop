@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const db = require('../config/db');
-const { sendEmail } = require('./email');
+const { sendEmail, SUPPORT_EMAIL } = require('./email');
 
 const CODE_TTL_MINUTES = 15;
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -46,12 +46,13 @@ async function sendCode(user) {
   await sendEmail({
     to: user.email,
     subject: `${code} is your VibeLoop code`,
-    text: `Hi ${user.username},\n\nYour VibeLoop verification code is ${code}. It expires in ${CODE_TTL_MINUTES} minutes.\n\nIf you didn't create a VibeLoop account, you can ignore this email.`,
+    text: `Hi ${user.username},\n\nYour VibeLoop verification code is ${code}. It expires in ${CODE_TTL_MINUTES} minutes.\n\nIf you didn't create a VibeLoop account, you can ignore this email.\n\nNeed help? Write to ${SUPPORT_EMAIL}.`,
     html: `<div style="font-family:Arial,sans-serif;max-width:420px;margin:auto;padding:24px;color:#111">
       <h2 style="margin:0 0 12px">Verify your email</h2>
       <p>Hi ${escapeHtml(user.username)}, enter this code in VibeLoop:</p>
       <p style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:20px 0">${code}</p>
       <p style="color:#555;font-size:13px">It expires in ${CODE_TTL_MINUTES} minutes. If you didn't create a VibeLoop account, ignore this email.</p>
+      <p style="color:#555;font-size:13px">Need help? Write to <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.</p>
     </div>`
   });
 }

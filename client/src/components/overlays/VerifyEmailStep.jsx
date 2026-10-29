@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MailCheck, Loader2, ArrowLeft } from 'lucide-react';
 import { apiFetch } from '../../utils/api.js';
+import { LEGAL_CONTACT } from '../../legal/content.js';
 
 const RESEND_SECONDS = 60;
 
@@ -100,7 +101,10 @@ export default function VerifyEmailStep({ email, initialError, onVerified, onBac
           {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
         </button>
       </div>
-      <p className="mt-3 text-[10px] text-slate-500 text-center">Can't find it? Check your spam or promotions folder.</p>
+      <p className="mt-3 text-[10px] text-slate-500 text-center">
+        Can't find it? Check your spam or promotions folder, or write to{' '}
+        <a href={`mailto:${LEGAL_CONTACT}`} className="text-slate-300 underline">{LEGAL_CONTACT}</a>.
+      </p>
     </div>
   );
 }

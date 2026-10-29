@@ -242,7 +242,7 @@ exports.updateProfile = async (req, res) => {
     if (!current.rows[0].is_guest && current.rows[0].gender !== gender) {
       return res.status(403).json({
         success: false,
-        error: 'Your gender was set when you signed up and cannot be changed. Contact support@vibeloop.com if it is wrong.'
+        error: 'Your gender was set when you signed up and cannot be changed. Contact vibeloop.support@gmail.com if it is wrong.'
       });
     }
     if (!current.rows[0].is_guest && current.rows[0].country_code !== country) {

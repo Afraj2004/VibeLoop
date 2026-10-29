@@ -28,7 +28,8 @@ stubModule('services/email.js', {
     if (emailFails) throw new Error('Brevo down');
     sentEmails.push(message);
   },
-  EmailError: class EmailError extends Error {}
+  EmailError: class EmailError extends Error {},
+  SUPPORT_EMAIL: 'help@example.com'
 });
 const lastCode = () => sentEmails.at(-1).subject.slice(0, 6);
 

@@ -1,5 +1,7 @@
 // Transactional email through Brevo (https://developers.brevo.com/reference/sendtransacemail)
 const BREVO_URL = 'https://api.brevo.com/v3/smtp/email';
+// Where people reach us; replies to any email we send land here too
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'vibeloop.support@gmail.com';
 
 class EmailError extends Error {}
 
@@ -25,6 +27,7 @@ async function sendEmail({ to, subject, text, html }) {
     body: JSON.stringify({
       sender: { name: process.env.EMAIL_FROM_NAME || 'VibeLoop', email: fromAddress },
       to: [{ email: to }],
+      replyTo: { email: SUPPORT_EMAIL },
       subject,
       textContent: text,
       htmlContent: html
@@ -39,4 +42,4 @@ async function sendEmail({ to, subject, text, html }) {
   }
 }
 
-module.exports = { sendEmail, EmailError };
+module.exports = { sendEmail, EmailError, SUPPORT_EMAIL };
