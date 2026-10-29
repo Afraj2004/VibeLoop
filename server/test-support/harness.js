@@ -73,7 +73,7 @@ async function startSignalingServer() {
    */
   async function connect(claims = {}, ip = '9.9.9.9') {
     userCount += 1;
-    const id = `00000000-0000-0000-0000-${String(userCount).padStart(12, '0')}`;
+    const id = String(userCount);
     const token = jwt.sign(
       { id, username: `user${userCount}`, gender: 'other', country: 'US', ...claims },
       process.env.JWT_SECRET

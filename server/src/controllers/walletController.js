@@ -3,7 +3,7 @@ const meetToEarn = require('../services/meetToEarn');
 const boost = require('../services/boost');
 const { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, REWARDS, roundVibe } = require('../config/economy');
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const { isId } = require('../config/ids');
 
 class WalletError extends Error {
   constructor(status, message, details = {}) {
@@ -57,12 +57,13 @@ exports.getBalance = async (req, res) => {
  */
 exports.sendGift = async (req, res) => {
   const senderId = req.user.id;
-  const { recipientId, giftId } = req.body;
+  const { giftId } = req.body;
+  const recipientId = req.body.recipientId == null ? '' : String(req.body.recipientId);
 
   if (!recipientId || !giftId) {
     return res.status(400).json({ success: false, error: 'Recipient and giftId required' });
   }
-  if (!UUID_PATTERN.test(recipientId)) {
+  if (!isId(recipientId)) {
     return res.status(400).json({ success: false, error: 'Invalid recipient' });
   }
   if (recipientId === senderId) {
@@ -80,7 +81,7 @@ exports.sendGift = async (req, res) => {
     const result = await db.withTransaction(async (client) => {
       // Lock both wallets in a consistent order so crossing gifts cannot deadlock
       const locked = await client.query(
-        'SELECT id, vibe_balance FROM users WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE',
+        'SELECT id, vibe_balance FROM users WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE',
         [[senderId, recipientId]]
       );
       const sender = locked.rows.find(r => r.id === senderId);
@@ -151,7 +152,7 @@ exports.getTransactions = async (req, res) => {
     const { rows } = await db.query(
       `SELECT t.id, t.amount, t.transaction_type, t.metadata, t.created_at, c.username AS counterparty
        FROM token_transactions t
-       LEFT JOIN users c ON c.id = COALESCE(t.metadata->>'recipientId', t.metadata->>'senderId')::uuid
+       LEFT JOIN users c ON c.id = COALESCE(t.metadata->>'recipientId', t.metadata->>'senderId')::bigint
        WHERE t.user_id = $1
        ORDER BY t.created_at DESC
        LIMIT 50`,

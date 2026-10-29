@@ -29,10 +29,10 @@ const admin = require(srcPath('controllers/adminController.js'));
 const account = require(srcPath('controllers/accountController.js'));
 const history = require(srcPath('services/history.js'));
 
-const ADMIN = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-const MEMBER = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
-const GUEST = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
-const PEER = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+const ADMIN = '101';
+const MEMBER = '102';
+const GUEST = '103';
+const PEER = '104';
 
 function call(handler, req) {
   const signalingCalls = [];

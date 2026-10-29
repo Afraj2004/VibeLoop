@@ -64,8 +64,8 @@ stubModule('config/db.js', {
 const meetToEarn = require(srcPath('services/meetToEarn.js'));
 const wallet = require(srcPath('controllers/walletController.js'));
 
-const SENDER = '11111111-1111-1111-1111-111111111111';
-const RECIPIENT = '22222222-2222-2222-2222-222222222222';
+const SENDER = '11';
+const RECIPIENT = '22';
 const today = new Date().toISOString().slice(0, 10);
 
 function resetUsers() {
@@ -99,7 +99,7 @@ describe('Meet-to-Earn', () => {
   let userId;
   beforeEach(() => {
     n += 1;
-    userId = `aaaaaaaa-0000-0000-0000-${String(n).padStart(12, '0')}`;
+    userId = String(1000 + n);
     users = { [userId]: { balance: 10, earned: 0, daily: 0, lastDay: null } };
     ledger = [];
   });
@@ -165,7 +165,7 @@ describe('gifting', () => {
   it('rejects self-gifts, unknown recipients, malformed ids and unknown gifts', async () => {
     assert.strictEqual((await sendGift({ recipientId: SENDER, giftId: 'compliment' })).status, 400);
     assert.strictEqual(
-      (await sendGift({ recipientId: '33333333-3333-3333-3333-333333333333', giftId: 'compliment' })).status,
+      (await sendGift({ recipientId: '33', giftId: 'compliment' })).status,
       404
     );
     assert.strictEqual((await sendGift({ recipientId: 'guest_peer', giftId: 'compliment' })).status, 400);

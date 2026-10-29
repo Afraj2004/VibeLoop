@@ -5,7 +5,7 @@ const { srcPath, stubModule, stubRedis, sleep, once, startSignalingServer } = re
 
 const redis = stubRedis();
 
-const BUYER = '44444444-4444-4444-4444-444444444444';
+const BUYER = '44';
 let balances = {};
 let ledger = [];
 

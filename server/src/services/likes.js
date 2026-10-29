@@ -5,7 +5,7 @@ const db = require('../config/db');
  */
 async function getCounts(userIds) {
   const { rows } = await db.query(
-    'SELECT id, likes_received FROM users WHERE id = ANY($1::uuid[])',
+    'SELECT id, likes_received FROM users WHERE id = ANY($1::bigint[])',
     [userIds]
   );
   return Object.fromEntries(rows.map((r) => [r.id, Number(r.likes_received)]));

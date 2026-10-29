@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { isId } = require('./ids');
 require('dotenv').config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -15,7 +16,7 @@ if (!JWT_SECRET) {
 function signToken(user) {
   return jwt.sign(
     {
-      id: user.id,
+      id: String(user.id),
       username: user.username,
       gender: user.gender || 'other',
       country: user.country_code || 'ALL',
@@ -27,7 +28,12 @@ function signToken(user) {
 }
 
 function verifyToken(token) {
-  return jwt.verify(token, JWT_SECRET);
+  const claims = jwt.verify(token, JWT_SECRET);
+  // Tokens issued before the switch to integer IDs carry a UUID: treat them as signed out
+  if (!isId(claims.id)) {
+    throw new jwt.JsonWebTokenError('outdated session');
+  }
+  return claims;
 }
 
 module.exports = { signToken, verifyToken };
