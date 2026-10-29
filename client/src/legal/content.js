@@ -107,8 +107,8 @@ export const PRIVACY = {
       heading: '2. Data we collect',
       bullets: [
         'Account: username, and if you register, your email address and a hashed password. We email a one-time code to confirm the address belongs to you; only a scrambled (hashed) copy of the code is stored, and it expires after 15 minutes. Guests get a randomly generated username.',
-        'Profile: your gender (chosen at sign-up) and your country, used for match filters. For accounts, the country is worked out from your device location, with your permission, at sign-up and whenever you update it. Your coordinates are used once on our server to find the country and are never stored or shared.',
-        'Optional profile photo, likes you have received, and your friends list and messages with friends (the last 30 messages per friend are kept).',
+        'Profile: your date of birth and gender (both fixed once given) and your country, used for match filters. People you meet see your age, never your date of birth. For accounts, the country is worked out from your device location, with your permission, at sign-up and whenever you update it. Your coordinates are used once on our server to find the country and are never stored or shared.',
+        'Optional profile photo, likes you have received (with when, for the weekly leaderboard), and your friends list and messages with friends (the last 30 messages per friend are kept).',
         'Consent records: when you confirmed you are 18+ and accepted the Terms, and which version.',
         'Activity: who you were matched with for 20 seconds or more and for how long; in-call chat messages (only the last 30 per conversation are kept); VIBE token balances and transactions; gifts sent and received.',
         'Safety: reports you file (including your IP address at the time, used to stop fake mass-reporting), reports about you, blocks, and any suspensions.',
@@ -121,6 +121,7 @@ export const PRIVACY = {
       bullets: [
         'to connect you with other users according to your filters;',
         'to run token rewards, gifts and your recent-contacts list;',
+        'to show the likes leaderboard, which lists registered accounts by username, photo, country and likes received;',
         'to keep the service safe: enforcing the Community Guidelines, investigating reports, preventing spam, fraud and abuse;',
         'to comply with law and respond to lawful requests.'
       ],
@@ -129,7 +130,7 @@ export const PRIVACY = {
     {
       heading: '4. Who we share it with',
       paragraphs: [
-        'The person you are matched with sees your video, audio, username, country (if set) and chat messages. We use these service providers to run VibeLoop, who process data only on our instructions: Render (application hosting), Vercel (website hosting), Supabase (database), Upstash (in-memory data store), Cloudflare (call relay), Razorpay (payments), Brevo (sending verification emails) and Better Stack (uptime monitoring). Google\'s public STUN servers help your browser find a network route for calls. These providers may store data in India or other countries, including the United States. We may disclose data where required by law or to protect users\' safety.'
+        'The person you are matched with sees your video, audio, username, age, country (if set), likes and chat messages. If you have a registered account, anyone using VibeLoop can see your username, photo, country and like count on the leaderboard. We use these service providers to run VibeLoop, who process data only on our instructions: Render (application hosting), Vercel (website hosting), Supabase (database), Upstash (in-memory data store), Cloudflare (call relay), Razorpay (payments), Brevo (sending verification emails) and Better Stack (uptime monitoring). Google\'s public STUN servers help your browser find a network route for calls. These providers may store data in India or other countries, including the United States. We may disclose data where required by law or to protect users\' safety.'
       ]
     },
     {

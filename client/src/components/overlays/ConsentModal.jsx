@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Check } from 'lucide-react';
+import BirthDateInput from './BirthDateInput.jsx';
+import { ageFrom, MIN_AGE } from '../../utils/age.js';
 
 // Bump when the guidelines change so every user re-confirms
 export const TERMS_VERSION = '2026-10-29';
@@ -33,12 +35,16 @@ function ConsentCheckbox({ checked, onChange, children }) {
 }
 
 /**
- * Blocking age + terms gate shown before the camera or a session is created
+ * Blocking age + terms gate shown before the camera or a session is created.
+ * With `askBirthDate` the date of birth replaces the "I am 18+" tick: onAccept({ birthDate }).
  */
-export default function ConsentModal({ onAccept }) {
+export default function ConsentModal({ onAccept, askBirthDate = false }) {
   const [isAdult, setIsAdult] = useState(false);
+  const [birthDate, setBirthDate] = useState('');
   const [acceptsTerms, setAcceptsTerms] = useState(false);
-  const canContinue = isAdult && acceptsTerms;
+  const age = ageFrom(birthDate);
+  const tooYoung = age !== null && age < MIN_AGE;
+  const canContinue = (askBirthDate ? age !== null && !tooYoung : isAdult) && acceptsTerms;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#08090D]/95 backdrop-blur-md p-4">
@@ -66,9 +72,21 @@ export default function ConsentModal({ onAccept }) {
         </ul>
 
         <div className="space-y-3 mb-6">
-          <ConsentCheckbox checked={isAdult} onChange={setIsAdult}>
-            I confirm I am <span className="font-bold text-white">18 years or older</span>.
-          </ConsentCheckbox>
+          {askBirthDate ? (
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Your date of birth</label>
+              <BirthDateInput value={birthDate} onChange={setBirthDate} />
+              <p className={`mt-1.5 text-[10px] ${tooYoung ? 'text-red-400 font-semibold' : 'text-slate-500'}`}>
+                {tooYoung
+                  ? `VibeLoop is only for people ${MIN_AGE} and over.`
+                  : "People you meet see your age, never your birth date. It can't be changed later."}
+              </p>
+            </div>
+          ) : (
+            <ConsentCheckbox checked={isAdult} onChange={setIsAdult}>
+              I confirm I am <span className="font-bold text-white">18 years or older</span>.
+            </ConsentCheckbox>
+          )}
           <ConsentCheckbox checked={acceptsTerms} onChange={setAcceptsTerms}>
             I agree to the Community Guidelines above, the{' '}
             <a href="/terms" target="_blank" rel="noreferrer" className="text-[#00F0FF] hover:underline">Terms of Service</a>
@@ -78,7 +96,7 @@ export default function ConsentModal({ onAccept }) {
         </div>
 
         <button
-          onClick={onAccept}
+          onClick={() => onAccept({ birthDate: askBirthDate ? birthDate : null })}
           disabled={!canContinue}
           className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#00F0FF] to-[#FF2A7A] text-slate-950 font-extrabold text-xs tracking-wider shadow-[0_0_20px_rgba(0,240,255,0.3)] active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
         >

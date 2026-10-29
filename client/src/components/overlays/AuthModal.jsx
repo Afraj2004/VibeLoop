@@ -5,14 +5,18 @@ import { apiFetch } from '../../utils/api.js';
 import { genderText } from '../hud/GenderLabel.jsx';
 import { getLocation } from '../../utils/location.js';
 import VerifyEmailStep from './VerifyEmailStep.jsx';
+import BirthDateInput from './BirthDateInput.jsx';
+import { ageFrom, MIN_AGE } from '../../utils/age.js';
 
-export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest, initialMode = 'login', signupBonus = 5 }) {
+// knownBirthDate: the guest session's date of birth, kept (and shown locked) when registering from it
+export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest, knownBirthDate = null, initialMode = 'login', signupBonus = 5 }) {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
-    gender: ''
+    gender: '',
+    birthDate: ''
   });
   // Country comes from the device location: { status: 'idle' | 'locating' | 'done', coords, country }
   const [place, setPlace] = useState({ status: 'idle', coords: null, country: null });
@@ -26,8 +30,9 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
     if (isOpen) {
       setIsLogin(initialMode === 'login');
       setVerifying(null);
+      if (knownBirthDate) setFormData((prev) => ({ ...prev, birthDate: knownBirthDate }));
     }
-  }, [isOpen, initialMode]);
+  }, [isOpen, initialMode, knownBirthDate]);
 
   if (!isOpen) return null;
 
@@ -65,6 +70,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
       let payload = { email: formData.email, password: formData.password };
       if (!isLogin) {
+        if (!formData.birthDate) throw new Error('Enter your date of birth');
+        if (ageFrom(formData.birthDate) < MIN_AGE) throw new Error(`VibeLoop is only for people ${MIN_AGE} and over.`);
         const location = (place.coords ? place : await detectCountry()).coords;
         // Registration is only reachable after the app-wide age/terms gate has been accepted
         payload = { ...formData, location, ageConfirmed: true, termsAccepted: true };
@@ -100,7 +107,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-[#12151E] border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+      <div className="w-full max-w-md max-h-[92dvh] overflow-y-auto bg-[#12151E] border border-slate-800 rounded-3xl p-6 shadow-2xl relative">
         {/* Ambient Glow */}
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#00F0FF]/15 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-[#FF2A7A]/15 rounded-full blur-3xl pointer-events-none" />
@@ -227,6 +234,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
           </div>
 
           {!isLogin && (
+            <div>
+              <label className="text-[11px] text-slate-400 font-medium block mb-1">Date of birth</label>
+              <BirthDateInput
+                value={formData.birthDate}
+                onChange={(birthDate) => setFormData({ ...formData, birthDate })}
+                disabled={Boolean(knownBirthDate)}
+              />
+            </div>
+          )}
+
+          {!isLogin && (
             <div className="grid grid-cols-2 gap-2 pt-1">
               <div>
                 <label className="text-[11px] text-slate-400 font-medium block mb-1">Gender</label>
@@ -264,7 +282,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
                 )}
               </div>
               <p className="col-span-2 text-[10px] text-slate-500">
-                Gender can't be changed after sign-up. Your country is set from your location (only the country is saved, never where you are).
+                Date of birth and gender can't be changed after sign-up; others see your age, not the date. Your country is set from your location (only the country is saved, never where you are).
               </p>
             </div>
           )}

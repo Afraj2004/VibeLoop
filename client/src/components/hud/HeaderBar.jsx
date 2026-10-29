@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Zap, Sparkles, Coins, Users, LogIn, UserPlus } from 'lucide-react';
+import { Zap, Sparkles, Coins, Users, LogIn, UserPlus, Trophy } from 'lucide-react';
 import Avatar from './Avatar.jsx';
 
 export default function HeaderBar({
@@ -14,6 +14,8 @@ export default function HeaderBar({
   onOpenProfile,
   onOpenFriends,
   friendsBadge = 0,
+  onOpenLeaderboard,
+  showLeaderboard = false,
   onOpenBoostModal,
   onOpenRechargeModal,
   boostMinutesLeft = 0
@@ -44,7 +46,7 @@ export default function HeaderBar({
       <div className="flex items-center gap-2.5 pointer-events-auto">
         <a href="/" aria-label="VibeLoop home" className="flex items-center gap-2 bg-[#12151E]/90 hover:border-slate-700 backdrop-blur-xl border border-slate-800/80 px-3 py-1.5 rounded-2xl shadow-xl transition-colors">
           <div className="w-2.5 h-2.5 rounded-full bg-[#00F0FF] animate-pulse shadow-[0_0_8px_#00F0FF]" />
-          <span className="font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-[#00F0FF] via-slate-100 to-[#FF2A7A] text-sm sm:text-base">
+          <span className="hidden min-[360px]:inline font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-[#00F0FF] via-slate-100 to-[#FF2A7A] text-sm sm:text-base">
             VIBELOOP
           </span>
         </a>
@@ -119,6 +121,18 @@ export default function HeaderBar({
             <span className="hidden sm:inline">BOOST</span>
           )}
         </button>
+
+        {/* Only while idle, so it never crowds the bar during a call */}
+        {showLeaderboard && (
+          <button
+            onClick={onOpenLeaderboard}
+            aria-label="Leaderboard"
+            title="Leaderboard"
+            className="p-2 rounded-2xl bg-[#12151E]/90 hover:bg-slate-800/90 border border-slate-800 hover:border-[#FFD166]/40 text-[#FFD166] shadow-xl transition-all active:scale-95 cursor-pointer"
+          >
+            <Trophy size={14} />
+          </button>
+        )}
 
         <button
           onClick={onOpenFriends}

@@ -129,3 +129,73 @@ describe('signaling', () => {
     assert.strictEqual(matchErrors, 1);
   });
 });
+
+describe('age filter', () => {
+  let app;
+  const born = (years) => {
+    const d = new Date();
+    d.setUTCFullYear(d.getUTCFullYear() - years);
+    d.setUTCMonth(d.getUTCMonth() - 1);
+    return d.toISOString().slice(0, 10);
+  };
+
+  before(async () => {
+    await redis.flushall();
+    app = await startSignalingServer();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  it('only matches people inside both age ranges and shows the age, never the birth date', async () => {
+    const waiting = await app.connect({ birthDate: born(30) });
+    waiting.emit('find_partner', { minAge: 18, maxAge: 25 });
+    await sleep(100);
+
+    // 40 is outside the waiting user's 18-25
+    const older = await app.connect({ birthDate: born(40) });
+    let olderMatched = false;
+    older.once('match_found', () => { olderMatched = true; });
+    older.emit('find_partner', {});
+    await sleep(200);
+    assert.strictEqual(olderMatched, false);
+    older.emit('leave');
+
+    // 22 fits, but this searcher only wants 35+: no match, and they wait instead
+    const picky = await app.connect({ birthDate: born(22) });
+    let pickyMatched = false;
+    picky.once('match_found', () => { pickyMatched = true; });
+    picky.emit('find_partner', { minAge: 35, maxAge: 60 });
+    await sleep(200);
+    assert.strictEqual(pickyMatched, false);
+    picky.emit('leave');
+    await sleep(50);
+
+    const young = await app.connect({ birthDate: born(22) });
+    const [forWaiting, forYoung] = await Promise.all([
+      once(waiting, 'match_found'),
+      once(young, 'match_found'),
+      young.emit('find_partner', { minAge: 25, maxAge: 60 })
+    ]);
+    assert.strictEqual(forWaiting.peer.age, 22);
+    assert.strictEqual(forYoung.peer.age, 30);
+    assert.strictEqual(forYoung.peer.birthDate, undefined);
+  });
+
+  it('asks sessions without a birth date for one before matching', async () => {
+    const noDate = await app.connect({ birthDate: null });
+    const [err] = await Promise.all([once(noDate, 'match_error'), noDate.emit('find_partner', {})]);
+    assert.strictEqual(err.needsBirthDate, true);
+  });
+
+  it('clamps and orders the requested range', () => {
+    const { normalizePreferences } = require('../src/matchmaker');
+    assert.deepStrictEqual(
+      normalizePreferences({ minAge: 70, maxAge: 5 }),
+      { targetGender: 'any', targetCountry: 'ALL', minAge: 18, maxAge: 60 }
+    );
+    assert.strictEqual(normalizePreferences({ minAge: 'x' }).minAge, 18);
+    assert.strictEqual(normalizePreferences({ minAge: 30, maxAge: 24 }).minAge, 24);
+  });
+});

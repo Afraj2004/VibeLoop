@@ -5,8 +5,10 @@ const { signToken } = require('../config/jwt');
 const { REWARDS } = require('../config/economy');
 const { countryFromLocation } = require('../services/geo');
 const verification = require('../services/verification');
+const { ageOn, checkBirthDate } = require('../config/age');
+const { SUPPORT_EMAIL } = require('../services/email');
 
-const USER_COLUMNS = 'id, username, email, vibe_balance, gender, country_code, is_guest, avatar_key, avatar_rewarded_at, likes_received';
+const USER_COLUMNS = 'id, username, email, vibe_balance, gender, country_code, is_guest, avatar_key, avatar_rewarded_at, likes_received, birth_date';
 
 const GENDERS = ['male', 'female', 'other'];
 const USERNAME_PATTERN = /^[a-zA-Z0-9_]{3,32}$/;
@@ -34,11 +36,14 @@ function toPublicUser(user) {
     // Photo URL key for GET /api/avatars/:key (changes on every upload); null when there is no photo
     avatarKey: user.avatar_key || null,
     photoRewardClaimed: Boolean(user.avatar_rewarded_at),
-    likes: Number(user.likes_received || 0)
+    likes: Number(user.likes_received || 0),
+    // Own profile only; partners see just the age
+    birthDate: user.birth_date || null,
+    age: user.birth_date ? ageOn(user.birth_date) : null
   };
 }
 
-function validateRegistration({ username, email, password, gender }) {
+function validateRegistration({ username, email, password, gender, birthDate }) {
   if (!USERNAME_PATTERN.test(username || '')) {
     return 'Username must be 3-32 characters: letters, numbers or underscores';
   }
@@ -53,7 +58,7 @@ function validateRegistration({ username, email, password, gender }) {
   if (!GENDERS.includes(gender)) {
     return 'Choose your gender';
   }
-  return null;
+  return checkBirthDate(birthDate).error || null;
 }
 
 /**
@@ -65,13 +70,20 @@ exports.createGuest = async (req, res) => {
   if (!hasConsent(req.body)) {
     return res.status(400).json({ success: false, error: CONSENT_ERROR });
   }
+  // Usually sent from the first-visit screen; sessions created without one are asked for it next
+  let birthDate = null;
+  if (req.body.birthDate !== undefined) {
+    const checked = checkBirthDate(req.body.birthDate);
+    if (checked.error) return res.status(400).json({ success: false, error: checked.error });
+    birthDate = checked.birthDate;
+  }
 
   try {
     const username = `guest_${crypto.randomBytes(4).toString('hex')}`;
     const result = await db.query(
-      `INSERT INTO users (username, is_guest, age_confirmed_at, terms_accepted_at, terms_version, vibe_balance)
-       VALUES ($1, TRUE, NOW(), NOW(), $2, 0) RETURNING ${USER_COLUMNS}`,
-      [username, TERMS_VERSION]
+      `INSERT INTO users (username, is_guest, age_confirmed_at, terms_accepted_at, terms_version, vibe_balance, birth_date)
+       VALUES ($1, TRUE, NOW(), NOW(), $2, 0, $3) RETURNING ${USER_COLUMNS}`,
+      [username, TERMS_VERSION, birthDate]
     );
     const user = result.rows[0];
 
@@ -102,6 +114,7 @@ exports.register = async (req, res) => {
   // The country always comes from the device's location, never from a typed value
   const { username, password, gender } = req.body;
   const email = req.body.email.trim().toLowerCase();
+  const { birthDate } = checkBirthDate(req.body.birthDate);
   if (!req.body.location) {
     return res.status(400).json({ success: false, error: LOCATION_REQUIRED });
   }
@@ -133,10 +146,11 @@ exports.register = async (req, res) => {
       const upgraded = await db.query(
         `UPDATE users
          SET username = $2, email = $3, password_hash = $4, gender = $5, country_code = $6,
-             age_confirmed_at = NOW(), terms_accepted_at = NOW(), terms_version = $7, verification_sent_at = NULL
+             age_confirmed_at = NOW(), terms_accepted_at = NOW(), terms_version = $7, verification_sent_at = NULL,
+             birth_date = COALESCE(birth_date, $8)
          WHERE id = $1 AND is_guest = TRUE
          RETURNING ${PENDING_COLUMNS}`,
-        [guestId, username, email, passwordHash, gender, country, TERMS_VERSION]
+        [guestId, username, email, passwordHash, gender, country, TERMS_VERSION, birthDate]
       );
       // Falls through to a fresh account if the guest row no longer exists
       pending = upgraded.rows[0] || null;
@@ -145,9 +159,9 @@ exports.register = async (req, res) => {
     if (!pending) {
       const inserted = await db.query(
         `INSERT INTO users (username, email, password_hash, gender, country_code,
-                            age_confirmed_at, terms_accepted_at, terms_version, vibe_balance)
-         VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, 0) RETURNING ${PENDING_COLUMNS}`,
-        [username, email, passwordHash, gender, country, TERMS_VERSION]
+                            age_confirmed_at, terms_accepted_at, terms_version, vibe_balance, birth_date)
+         VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, 0, $7) RETURNING ${PENDING_COLUMNS}`,
+        [username, email, passwordHash, gender, country, TERMS_VERSION, birthDate]
       );
       pending = inserted.rows[0];
     }
@@ -242,7 +256,7 @@ exports.updateProfile = async (req, res) => {
     if (!current.rows[0].is_guest && current.rows[0].gender !== gender) {
       return res.status(403).json({
         success: false,
-        error: 'Your gender was set when you signed up and cannot be changed. Contact vibeloop.support@gmail.com if it is wrong.'
+        error: `Your gender was set when you signed up and cannot be changed. Contact ${SUPPORT_EMAIL} if it is wrong.`
       });
     }
     if (!current.rows[0].is_guest && current.rows[0].country_code !== country) {
@@ -280,7 +294,10 @@ exports.getMe = async (req, res) => {
     if (!result.rows[0]) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
-    res.json({ success: true, user: toPublicUser(result.rows[0]) });
+    const user = result.rows[0];
+    // A birth date added from another device isn't in this session's token yet: matchmaking needs it
+    const staleToken = !req.user.birthDate && user.birth_date;
+    res.json({ success: true, user: toPublicUser(user), ...(staleToken && { token: signToken(user) }) });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Server error fetching user' });
   }
@@ -324,6 +341,43 @@ exports.updateLocation = async (req, res) => {
   } catch (err) {
     console.error('Location Update Error:', err);
     res.status(500).json({ success: false, error: 'Server error updating your country' });
+  }
+};
+
+/**
+ * PATCH /api/profile/birth-date  { birthDate }
+ * One-time: for sessions that started before birth dates were asked. Once set it can't be changed
+ * (only support can correct it). Returns a fresh token, since matchmaking reads the age from it.
+ */
+exports.setBirthDate = async (req, res) => {
+  const { birthDate, error } = checkBirthDate(req.body?.birthDate);
+  if (error) {
+    return res.status(400).json({ success: false, error });
+  }
+
+  try {
+    const { rows } = await db.query(
+      `UPDATE users SET birth_date = $2 WHERE id = $1 AND birth_date IS NULL RETURNING ${USER_COLUMNS}`,
+      [req.user.id, birthDate]
+    );
+    if (!rows[0]) {
+      const existing = await db.query(`SELECT ${USER_COLUMNS} FROM users WHERE id = $1`, [req.user.id]);
+      if (!existing.rows[0]) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      // Already set (e.g. from another device): hand back the stored one rather than changing it
+      if (existing.rows[0].birth_date !== birthDate) {
+        return res.status(403).json({
+          success: false,
+          error: `Your date of birth is already set and can't be changed. Contact ${SUPPORT_EMAIL} if it is wrong.`
+        });
+      }
+      rows.push(existing.rows[0]);
+    }
+    res.json({ success: true, token: signToken(rows[0]), user: toPublicUser(rows[0]) });
+  } catch (err) {
+    console.error('Birth Date Error:', err);
+    res.status(500).json({ success: false, error: 'Server error saving your date of birth' });
   }
 };
 

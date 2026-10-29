@@ -6,6 +6,7 @@ import { apiFetch } from '../../utils/api.js';
 import { resizeImage } from '../../utils/avatar.js';
 import { countryName, flagEmoji } from '../../utils/countries.js';
 import { getLocation } from '../../utils/location.js';
+import { ageFrom, formatBirthDate } from '../../utils/age.js';
 
 
 /**
@@ -144,6 +145,17 @@ export default function ProfileModal({ currentUser, token, photoReward, onClose,
               <Lock size={12} className="text-slate-500" />
             </span>
           </div>
+
+          {currentUser.birthDate && (
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-[#08090D] border border-slate-800">
+              <span className="text-xs text-slate-400">Date of birth</span>
+              <span className="flex items-center gap-1.5 text-xs font-bold text-white">
+                {formatBirthDate(currentUser.birthDate)}
+                <span className="text-slate-500 font-semibold">· {ageFrom(currentUser.birthDate)}</span>
+                <Lock size={12} className="text-slate-500" />
+              </span>
+            </div>
+          )}
 
           <div className="p-3 rounded-2xl bg-[#08090D] border border-slate-800">
             <span className="text-xs text-slate-400 block mb-2">Country</span>
