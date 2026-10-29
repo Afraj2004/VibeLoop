@@ -9,6 +9,7 @@ const adminController = require('../controllers/adminController');
 const paymentsController = require('../controllers/paymentsController');
 const profileController = require('../controllers/profileController');
 const friendsController = require('../controllers/friendsController');
+const leaderboardController = require('../controllers/leaderboardController');
 const requireAdmin = require('../middlewares/requireAdmin');
 const auth = require('../middlewares/auth');
 const optionalAuth = require('../middlewares/optionalAuth');
@@ -44,6 +45,17 @@ router.patch(
   rateLimit({ name: 'location', limit: 20, windowSeconds: HOUR, by: 'user' }),
   authController.updateLocation
 );
+
+// Date of birth, once, for sessions that started before it was asked
+router.patch(
+  '/profile/birth-date',
+  auth,
+  rateLimit({ name: 'birth-date', limit: 10, windowSeconds: HOUR, by: 'user' }),
+  authController.setBirthDate
+);
+
+// Most-liked accounts, this week and all time
+router.get('/leaderboard', rateLimit({ name: 'leaderboard', limit: 120, windowSeconds: HOUR }), optionalAuth, leaderboardController.get);
 
 // Profile photo (first one earns VIBE). The upload route gets a larger body limit in server.js.
 router.put(

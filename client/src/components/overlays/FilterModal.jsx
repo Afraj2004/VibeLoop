@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, SlidersHorizontal, Lock, Zap, MapPin } from 'lucide-react';
 import { COUNTRIES, countryName, flagEmoji } from '../../utils/countries.js';
 import GenderLabel from '../hud/GenderLabel.jsx';
+import AgeRangeSlider from './AgeRangeSlider.jsx';
+import { FILTER_MIN_AGE, FILTER_MAX_AGE } from '../../utils/age.js';
 
 const TARGET_GENDERS = [
   { id: 'any', label: 'Everyone' },
@@ -57,6 +59,10 @@ export default function FilterModal({
 }) {
   const [targetGender, setTargetGender] = useState(preferences.targetGender);
   const [targetCountry, setTargetCountry] = useState(preferences.targetCountry);
+  const [ageRange, setAgeRange] = useState({
+    minAge: preferences.minAge ?? FILTER_MIN_AGE,
+    maxAge: preferences.maxAge ?? FILTER_MAX_AGE
+  });
   const [gender, setGender] = useState(profile.gender);
   const [country, setCountry] = useState(profile.country);
   const [error, setError] = useState('');
@@ -66,7 +72,7 @@ export default function FilterModal({
     setSaving(true);
     setError('');
     try {
-      await onSave({ preferences: { targetGender, targetCountry }, profile: { gender, country } });
+      await onSave({ preferences: { targetGender, targetCountry, ...ageRange }, profile: { gender, country } });
       onClose();
     } catch (err) {
       setError(err.message || 'Could not save your filters');
@@ -77,7 +83,7 @@ export default function FilterModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-      <div className="w-full max-w-md bg-[#12151E] border border-slate-800 rounded-3xl p-6 shadow-2xl">
+      <div className="w-full max-w-md max-h-[92vh] overflow-y-auto bg-[#12151E] border border-slate-800 rounded-3xl p-6 shadow-2xl">
 
         <div className="flex items-center justify-between pb-4 border-b border-slate-800/80 mb-5">
           <div className="flex items-center gap-2.5">
@@ -118,6 +124,11 @@ export default function FilterModal({
             <SegmentedControl options={TARGET_GENDERS} value={targetGender} onChange={setTargetGender} />
           )}
           <CountrySelect value={targetCountry} onChange={setTargetCountry} anyLabel="Anywhere in the world" />
+          <AgeRangeSlider
+            minAge={ageRange.minAge}
+            maxAge={ageRange.maxAge}
+            onChange={(minAge, maxAge) => setAgeRange({ minAge, maxAge })}
+          />
         </div>
 
         <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">About me</h4>

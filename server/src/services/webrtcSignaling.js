@@ -8,6 +8,8 @@ const moderation = require('./moderation');
 const boost = require('./boost');
 const friends = require('./friends');
 const likes = require('./likes');
+const leaderboard = require('./leaderboard');
+const { ageOn } = require('../config/age');
 const { consume } = require('../middlewares/rateLimiter');
 
 // Skip-spam guard: bots cycling the queue get cut off; humans rarely skip more than once every few seconds
@@ -23,7 +25,8 @@ const { isId } = require('../config/ids');
 
 /**
  * What a matched partner learns about you. Your boost earns you a flame badge; the viewer's
- * own boost reveals your gender to them before video connects.
+ * own boost reveals your gender to them before video connects. Your age (never the birth date)
+ * is always shown, and last week's top 3 on the likes leaderboard wear their medal (champion: 1-3).
  */
 function toPublicProfile(user, { boosted = false, revealGender = false } = {}) {
   return {
@@ -31,9 +34,13 @@ function toPublicProfile(user, { boosted = false, revealGender = false } = {}) {
     username: user.username,
     country: user.country,
     boosted,
+    age: user.birthDate ? ageOn(user.birthDate) : null,
+    champion: user.isGuest ? null : leaderboard.championPlace(user.id),
     ...(revealGender && { gender: user.gender })
   };
 }
+
+const BIRTH_DATE_REQUIRED = 'Add your date of birth to start matching.';
 
 // Bans further out than this are treated as permanent in user-facing messages
 const PERMANENT_BAN_YEARS = 50;
@@ -71,6 +78,7 @@ function registerSignaling(io) {
         username: claims.username,
         gender: claims.gender || 'other',
         country: claims.country || 'ALL',
+        birthDate: claims.birthDate || null,
         isGuest: Boolean(claims.isGuest)
       };
       socket.data.partnerId = null;
@@ -265,10 +273,18 @@ function registerSignaling(io) {
 
       endCall(socket);
 
+      // Sessions from before birth dates were asked get the one-time prompt first
+      if (!user.birthDate) {
+        isFinding = false;
+        socket.emit('match_error', { error: BIRTH_DATE_REQUIRED, needsBirthDate: true });
+        return;
+      }
+
       const userState = {
         userId: user.id,
         gender: user.gender,
         country: user.country,
+        age: ageOn(user.birthDate),
         ...matchmaker.normalizePreferences(preferences)
       };
 
@@ -409,7 +425,7 @@ function registerSignaling(io) {
 
       const partnerId = partner.data.user.id;
       try {
-        const total = await likes.addLike(partnerId);
+        const total = await likes.addLike(partnerId, user.id);
         socket.emit('like_update', { userId: partnerId, likes: total });
         partner.emit('liked', { by: user.username, likes: total });
       } catch (err) {

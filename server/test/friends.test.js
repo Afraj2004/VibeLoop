@@ -12,6 +12,7 @@ const befriend = (a, b) => { friendPairs.add(`${a}|${b}`); friendPairs.add(`${b}
 const dbCalls = [];
 let requestState = {};
 const likeCounts = {};
+const likeEvents = [];
 
 stubModule('config/db.js', {
   query: async (text, params = []) => {
@@ -31,7 +32,8 @@ stubModule('config/db.js', {
     if (sql.startsWith('UPDATE friendships')) return { rows: [], rowCount: 1 };
     // Likes
     if (sql.startsWith('SELECT id, likes_received FROM users')) return { rows: params[0].map((id) => ({ id, likes_received: likeCounts[id] || 0 })) };
-    if (sql.startsWith('UPDATE users SET likes_received')) {
+    if (sql.startsWith('WITH u AS ( UPDATE users SET likes_received')) {
+      likeEvents.push({ liked: params[0], liker: params[1] });
       likeCounts[params[0]] = (likeCounts[params[0]] || 0) + 1;
       return { rows: [{ likes_received: likeCounts[params[0]] }] };
     }
@@ -126,6 +128,8 @@ describe('friends over the socket', () => {
     A.emit('like_partner');
     await sleep(80);
     assert.strictEqual(likeCounts[B.userId], 8);
+    // Logged for the weekly leaderboard, with who liked
+    assert.deepStrictEqual(likeEvents, [{ liked: B.userId, liker: A.userId }]);
 
     await Promise.all([once(B, 'partner_left'), A.emit('leave')]);
   });

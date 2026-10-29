@@ -13,7 +13,7 @@ exports.exportData = async (req, res) => {
   try {
     const [profile, transactions, matches, messages, reportsFiled, blocks, purchases, recentContacts, friendships] = await Promise.all([
       db.query(
-        `SELECT id, username, email, gender, country_code, is_guest, vibe_balance, earned_balance,
+        `SELECT id, username, email, gender, country_code, birth_date, is_guest, vibe_balance, earned_balance,
                 daily_earned_tokens, last_earned_date, avatar_updated_at, age_confirmed_at, terms_accepted_at,
                 terms_version, banned_until, created_at
          FROM users WHERE id = $1`,

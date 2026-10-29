@@ -1,5 +1,6 @@
 // matchmaker.js
 const redis = require('./config/redis');
+const { FILTER_MIN_AGE, FILTER_MAX_AGE } = require('./config/age');
 
 // Waiting users expire on their own if a server crash skips the disconnect cleanup
 const USER_TTL_SECONDS = 2 * 60 * 60;
@@ -9,18 +10,30 @@ const USER_TTL_SECONDS = 2 * 60 * 60;
  * Doing both in one script means two simultaneous searchers can never both end up waiting.
  *
  * A candidate is compatible only if the match is reciprocal: the candidate's own
- * gender/country filters must accept the requester as well, and neither user has
+ * gender/country/age filters must accept the requester as well, and neither user has
  * blocked the other (blocks:{userId} sets, see services/moderation.js). The matched peer is
  * removed from ALL four of its queues so it can never be handed out twice.
  *
  * VibeBoost: waiting boosted users are also kept in the small 'queue:boosted' set and are
  * offered first to every compatible searcher, ahead of the random sample.
  *
- * ARGV: mySocketId, myUserId, myGender, myCountry, targetGender, targetCountry, myBoosted ('1'/'0')
+ * Ages: a max of FILTER_MAX_AGE means "and older". Users with no known age only pass open ranges.
+ *
+ * ARGV: mySocketId, myUserId, myGender, myCountry, targetGender, targetCountry, myBoosted ('1'/'0'),
+ *       myAge (-1 if unknown), minAge, maxAge, filterMaxAge
  */
 const FIND_OR_ENQUEUE_LUA = `
   local my_sid, my_uid, my_gender, my_country, t_gender, t_country, my_boosted =
     ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]
+  local my_age, min_age, max_age, filter_max = tonumber(ARGV[8]), tonumber(ARGV[9]), tonumber(ARGV[10]), tonumber(ARGV[11])
+  local filter_min = ${FILTER_MIN_AGE}
+
+  -- Does an age range accept this age? Open ranges accept everyone, even unknown ages.
+  local function age_ok(age, lo, hi)
+    if lo <= filter_min and hi >= filter_max then return true end
+    if age < 0 then return false end
+    return age >= lo and (hi >= filter_max or age <= hi)
+  end
 
   local function queues_for(gender, country)
     return {
@@ -42,12 +55,18 @@ const FIND_OR_ENQUEUE_LUA = `
   local function check(sid)
     if sid == my_sid then return nil end
     if redis.call('EXISTS', 'user:' .. sid) == 0 then return 'stale' end
-    local p = redis.call('HMGET', 'user:' .. sid, 'userId', 'gender', 'country', 'targetGender', 'targetCountry')
+    local p = redis.call('HMGET', 'user:' .. sid, 'userId', 'gender', 'country', 'targetGender', 'targetCountry',
+      'age', 'minAge', 'maxAge')
+    local their_age = tonumber(p[6]) or -1
+    local their_min = tonumber(p[7]) or filter_min
+    local their_max = tonumber(p[8]) or filter_max
     if p[1] ~= my_uid
       and redis.call('SISMEMBER', 'blocks:' .. my_uid, p[1]) == 0
       and redis.call('SISMEMBER', 'blocks:' .. p[1], my_uid) == 0
       and (p[4] == 'any' or p[4] == my_gender)
-      and (p[5] == 'ALL' or p[5] == my_country) then
+      and (p[5] == 'ALL' or p[5] == my_country)
+      and age_ok(their_age, min_age, max_age)
+      and age_ok(my_age, their_min, their_max) then
       return p
     end
     return nil
@@ -121,12 +140,21 @@ function queuesFor(gender, country) {
 /**
  * Normalises client-supplied filters to the values the queues understand
  */
-function normalizePreferences({ targetGender, targetCountry } = {}) {
+function normalizePreferences({ targetGender, targetCountry, minAge, maxAge } = {}) {
   const gender = String(targetGender || 'any').toLowerCase();
   const country = String(targetCountry || 'ALL').toUpperCase();
+  const clampAge = (value, fallback) => {
+    const n = Math.round(Number(value));
+    return Number.isFinite(n) ? Math.min(FILTER_MAX_AGE, Math.max(FILTER_MIN_AGE, n)) : fallback;
+  };
+  let min = clampAge(minAge, FILTER_MIN_AGE);
+  let max = clampAge(maxAge, FILTER_MAX_AGE);
+  if (min > max) [min, max] = [max, min];
   return {
     targetGender: ['any', 'male', 'female', 'other'].includes(gender) ? gender : 'any',
     targetCountry: /^[A-Z]{2,3}$/.test(country) ? country : 'ALL',
+    minAge: min,
+    maxAge: max,
   };
 }
 
@@ -134,15 +162,24 @@ function normalizePreferences({ targetGender, targetCountry } = {}) {
  * Returns the matched peer's socket ID, or null if the user was placed in the waiting pool
  */
 async function findOrEnqueue(socketId, userState) {
-  const { userId, gender, country, targetGender, targetCountry, boosted = false } = userState;
+  const {
+    userId, gender, country, targetGender, targetCountry, boosted = false,
+    age = null, minAge = FILTER_MIN_AGE, maxAge = FILTER_MAX_AGE
+  } = userState;
+  const knownAge = Number.isInteger(age) ? age : -1;
 
   await redis
     .multi()
-    .hset(`user:${socketId}`, { userId, gender, country, targetGender, targetCountry, hasBoost: boosted ? 1 : 0 })
+    .hset(`user:${socketId}`, {
+      userId, gender, country, targetGender, targetCountry, hasBoost: boosted ? 1 : 0, age: knownAge, minAge, maxAge
+    })
     .expire(`user:${socketId}`, USER_TTL_SECONDS)
     .exec();
 
-  return redis.findOrEnqueue(socketId, userId, gender, country, targetGender, targetCountry, boosted ? '1' : '0');
+  return redis.findOrEnqueue(
+    socketId, userId, gender, country, targetGender, targetCountry, boosted ? '1' : '0',
+    knownAge, minAge, maxAge, FILTER_MAX_AGE
+  );
 }
 
 /**

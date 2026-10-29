@@ -75,7 +75,7 @@ async function startSignalingServer() {
     userCount += 1;
     const id = String(userCount);
     const token = jwt.sign(
-      { id, username: `user${userCount}`, gender: 'other', country: 'US', ...claims },
+      { id, username: `user${userCount}`, gender: 'other', country: 'US', birthDate: '1995-06-15', ...claims },
       process.env.JWT_SECRET
     );
     const socket = ioClient(`http://localhost:${port}`, {

@@ -14,6 +14,9 @@ import ProfileModal from './components/overlays/ProfileModal.jsx';
 import FriendsPanel from './components/overlays/FriendsPanel.jsx';
 import CallOverlay from './components/overlays/CallOverlay.jsx';
 import HistoryBar from './components/overlays/HistoryBar.jsx';
+import BirthDateModal from './components/overlays/BirthDateModal.jsx';
+import LeaderboardModal, { MEDALS } from './components/overlays/LeaderboardModal.jsx';
+import { ageRangeLabel, FILTER_MIN_AGE, FILTER_MAX_AGE } from './utils/age.js';
 import { useSocket } from './hooks/useSocket.js';
 import { useVibeWebRTC } from './hooks/useVibeWebRTC.js';
 import { useFriends } from './hooks/useFriends.js';
@@ -25,7 +28,7 @@ import GenderLabel, { genderText } from './components/hud/GenderLabel.jsx';
 import { COUNTRIES, flagEmoji } from './utils/countries.js';
 import { Sparkles, AlertTriangle, Flag, UserPlus, Users, Heart } from 'lucide-react';
 
-const DEFAULT_PREFERENCES = { targetGender: 'any', targetCountry: 'ALL' };
+const DEFAULT_PREFERENCES = { targetGender: 'any', targetCountry: 'ALL', minAge: FILTER_MIN_AGE, maxAge: FILTER_MAX_AGE };
 
 function loadJson(key) {
   try {
@@ -40,7 +43,12 @@ export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem('vibeloop_token'));
   const [sessionError, setSessionError] = useState(null);
   const [hasConsented, setHasConsented] = useState(() => localStorage.getItem('vibeloop_consent') === TERMS_VERSION);
-  const [preferences, setPreferences] = useState(() => loadJson('vibeloop_filters') || DEFAULT_PREFERENCES);
+  // Saved filters from before the age filter existed get the full age range
+  const [preferences, setPreferences] = useState(() => ({ ...DEFAULT_PREFERENCES, ...loadJson('vibeloop_filters') }));
+  // The token whose profile has been refreshed from the server (stored copies can predate new fields)
+  const [checkedToken, setCheckedToken] = useState(null);
+  // Date of birth from the first-visit screen, used when the guest session is created
+  const pendingBirthDateRef = useRef(null);
 
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isAudioOn, setIsAudioOn] = useState(true);
@@ -58,6 +66,7 @@ export default function App() {
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isFriendsOpen, setIsFriendsOpen] = useState(false);
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login');
   const [boostUntil, setBoostUntil] = useState(null);
   const [boostPrice, setBoostPrice] = useState(10);
@@ -116,9 +125,18 @@ export default function App() {
   const isFriendCallRef = useRef(isFriendCall);
   isFriendCallRef.current = isFriendCall;
 
-  const handleConsent = () => {
+  const handleConsent = ({ birthDate } = {}) => {
     localStorage.setItem('vibeloop_consent', TERMS_VERSION);
     setHasConsented(true);
+    if (!birthDate) return;
+    if (!token) {
+      pendingBirthDateRef.current = birthDate;
+    } else if (currentUser && !currentUser.birthDate) {
+      // Existing session without one: save it now (the one-time prompt shows if this fails)
+      apiFetch('/api/profile/birth-date', { token, method: 'PATCH', body: { birthDate } })
+        .then((data) => persistSession(data.user, data.token))
+        .catch((err) => showNotice(err.message, true));
+    }
   };
 
   // Instant guest access once the age/terms gate is passed
@@ -126,7 +144,11 @@ export default function App() {
     if (token || !hasConsented) return;
     let cancelled = false;
 
-    apiFetch('/api/auth/guest', { method: 'POST', body: { ageConfirmed: true, termsAccepted: true } })
+    const birthDate = pendingBirthDateRef.current;
+    apiFetch('/api/auth/guest', {
+      method: 'POST',
+      body: { ageConfirmed: true, termsAccepted: true, ...(birthDate && { birthDate }) }
+    })
       .then((data) => {
         if (!cancelled) {
           setSessionError(null);
@@ -142,6 +164,28 @@ export default function App() {
       cancelled = true;
     };
   }, [token, hasConsented, persistSession]);
+
+  // Refresh the stored profile once per session token (e.g. a birth date added on another device)
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    apiFetch('/api/auth/me', { token })
+      .then((data) => {
+        if (cancelled) return;
+        // A replacement token means ours predates the stored birth date; this effect reruns with it
+        if (data.token) return persistSession(data.user, data.token);
+        localStorage.setItem('vibeloop_user', JSON.stringify(data.user));
+        setCurrentUser(data.user);
+        setCheckedToken(token);
+      })
+      .catch((err) => console.error('Profile refresh failed:', err.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  // Sessions from before birth dates were asked add one once, before matching
+  const needsBirthDate = hasConsented && Boolean(currentUser) && checkedToken === token && !currentUser.birthDate;
 
   // Fetch balance for the current session
   useEffect(() => {
@@ -306,6 +350,7 @@ export default function App() {
     stop();
     setIsProfileOpen(false);
     setIsFriendsOpen(false);
+    setIsLeaderboardOpen(false);
     clearSession();
   };
 
@@ -458,11 +503,13 @@ export default function App() {
 
   // Partner info sits on the side away from your camera tile
   const partnerSide = selfViewSide === 'right' ? 'left-3 sm:left-6 items-start' : 'right-3 sm:right-6 items-end';
+  const ageLabel = ageRangeLabel(preferences.minAge, preferences.maxAge);
   const filterSummary = [
     isBoosted && preferences.targetGender !== 'any' ? genderText(preferences.targetGender, { plural: true }) : null,
     preferences.targetCountry !== 'ALL'
       ? `${flagEmoji(preferences.targetCountry)} ${COUNTRIES.find((c) => c.code === preferences.targetCountry)?.name || preferences.targetCountry}`
-      : null
+      : null,
+    ageLabel !== 'Any age' ? `Age ${ageLabel}` : null
   ].filter(Boolean);
 
   // On wide screens the chat drawer docks beside the stage instead of covering it
@@ -482,6 +529,8 @@ export default function App() {
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenFriends={() => setIsFriendsOpen(true)}
         friendsBadge={friends.badge}
+        onOpenLeaderboard={() => setIsLeaderboardOpen(true)}
+        showLeaderboard={status === 'idle'}
         onOpenBoostModal={() => setIsBoostOpen(true)}
         boostMinutesLeft={minutesLeft(boostUntil)}
         onOpenRechargeModal={() => setIsWalletOpen(true)}
@@ -519,7 +568,7 @@ export default function App() {
               </h2>
               <p className="text-sm text-slate-400 mt-1.5 max-w-sm mx-auto">
                 {isMatched && peer
-                  ? <>Matched with {peer.username}{peer.gender && <> · <GenderLabel gender={peer.gender} /></>}</>
+                  ? <>Matched with {peer.username}{peer.gender && <> · <GenderLabel gender={peer.gender} /></>}{peer.age && <> · {peer.age}</>}</>
                   : status === 'searching'
                     ? 'Looking for someone who matches your filters.'
                     : 'Press START to meet new people around the globe. Earn VIBE tokens as you chat.'}
@@ -558,6 +607,11 @@ export default function App() {
         <div className={`absolute top-24 ${partnerSide} z-30 flex flex-col gap-1.5 max-w-[45%]`}>
           <span className="max-w-full truncate px-3 py-1.5 rounded-2xl bg-black/50 border border-white/10 backdrop-blur-xl text-xs font-bold text-white">
             {peer.country && peer.country !== 'ALL' ? `${flagEmoji(peer.country)} ` : ''}{peer.username}
+            {MEDALS[peer.champion] && (
+              <span title={`#${peer.champion} on last week's leaderboard`} aria-label={`#${peer.champion} on last week's leaderboard`} className="ml-1">
+                {MEDALS[peer.champion]}
+              </span>
+            )}
           </span>
           {isFriendCall && (
             <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 backdrop-blur-xl text-[11px] font-bold">
@@ -593,9 +647,13 @@ export default function App() {
               {peerLikes.likes.toLocaleString()}
             </span>
           )}
-          {peer.gender && (
-            <span className="w-9 h-9 flex items-center justify-center rounded-full bg-black/50 border border-white/15 backdrop-blur-xl text-xl font-bold leading-none">
-              <GenderLabel gender={peer.gender} symbolOnly />
+          {(peer.gender || peer.age) && (
+            <span
+              aria-label={peer.age ? `Age ${peer.age}` : undefined}
+              className={`h-9 min-w-9 flex items-center justify-center gap-1 rounded-full bg-black/50 border border-white/15 backdrop-blur-xl font-bold leading-none ${peer.age ? 'px-3' : ''}`}
+            >
+              {peer.gender && <GenderLabel gender={peer.gender} symbolOnly className="text-xl" />}
+              {peer.age && <span className="text-sm text-white">{peer.age}</span>}
             </span>
           )}
           <button
@@ -638,7 +696,7 @@ export default function App() {
         onToggleAudio={toggleAudio}
         onToggleVideo={toggleVideo}
         onOpenFilters={() => setIsFilterOpen(true)}
-        filtersActive={preferences.targetGender !== 'any' || preferences.targetCountry !== 'ALL'}
+        filtersActive={preferences.targetGender !== 'any' || preferences.targetCountry !== 'ALL' || ageLabel !== 'Any age'}
         onToggleChat={() => setIsChatOpen(!isChatOpen)}
         hasUnreadChat={messages.length > 0 && !isChatOpen}
         onGift={() => setGiftTarget(peer)}
@@ -752,6 +810,18 @@ export default function App() {
         />
       )}
 
+      {isLeaderboardOpen && (
+        <LeaderboardModal
+          token={token}
+          isRegistered={isRegistered}
+          onClose={() => setIsLeaderboardOpen(false)}
+          onRequireAccount={() => {
+            setIsLeaderboardOpen(false);
+            openAuth('register');
+          }}
+        />
+      )}
+
       {isReportOpen && isMatched && (
         <ReportModal
           peerName={peer?.username}
@@ -782,6 +852,7 @@ export default function App() {
         backendUrl={BACKEND_URL}
         token={token}
         isGuest={!currentUser || currentUser.isGuest}
+        knownBirthDate={currentUser?.isGuest ? currentUser.birthDate : null}
         initialMode={authMode}
         signupBonus={rewards.SIGNUP}
         onAuthSuccess={handleAuthSuccess}
@@ -850,7 +921,16 @@ export default function App() {
         <button onClick={() => setIsAccountOpen(true)} className="hover:text-slate-300 cursor-pointer">Your account &amp; data</button>
       </div>
 
-      {!hasConsented && <ConsentModal onAccept={handleConsent} />}
+      {!hasConsented && <ConsentModal onAccept={handleConsent} askBirthDate={!currentUser?.birthDate} />}
+
+      {needsBirthDate && (
+        <BirthDateModal
+          token={token}
+          isGuest={!isRegistered}
+          onSaved={(user, tok) => persistSession(user, tok)}
+          onSignOut={handleLogout}
+        />
+      )}
 
     </div>
   );

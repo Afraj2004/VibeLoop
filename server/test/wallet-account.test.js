@@ -85,6 +85,14 @@ stubModule('config/db.js', {
       return { rows: [userRow(params[0], { vibe_balance: first ? '1.00' : '1.00', avatar_updated_at: new Date(), avatar_key: params[3], rewarded: first })] };
     }
     if (sql.startsWith('SELECT t.id, t.amount')) return { rows: state.ledger };
+    if (sql.startsWith('UPDATE users SET birth_date')) {
+      if (state.birthDate) return { rows: [] };
+      state.birthDate = params[1];
+      return { rows: [userRow(params[0], { birth_date: params[1] })] };
+    }
+    if (sql.startsWith('SELECT id, username, email, vibe_balance')) {
+      return { rows: [userRow(params[0], { birth_date: state.birthDate || null })] };
+    }
     if (sql.startsWith('SELECT is_guest, gender, country_code FROM users')) return { rows: state.profile ? [state.profile] : [] };
     if (sql.startsWith('UPDATE users SET country_code')) return { rows: [userRow(params[0], { country_code: params[1] })] };
     if (sql.startsWith('UPDATE users SET gender')) return { rows: [userRow(params[0], { gender: params[1], country_code: params[2], is_guest: state.profile.is_guest })] };
@@ -101,7 +109,7 @@ const { REWARDS } = require(srcPath('config/economy.js'));
 
 const REGISTRATION = {
   username: 'newname', email: 'me@example.com', password: 'longenough1',
-  gender: 'female', ageConfirmed: true, termsAccepted: true,
+  gender: 'female', ageConfirmed: true, termsAccepted: true, birthDate: '1998-04-12',
   // Bengaluru
   location: { latitude: 12.97, longitude: 77.59 }
 };
@@ -307,7 +315,7 @@ describe('sign-up bonus', () => {
     } finally {
       db.query = original;
     }
-    assert.match(guestQueries[0], /vibe_balance\) VALUES \(\$1, TRUE, NOW\(\), NOW\(\), \$2, 0\)/);
+    assert.match(guestQueries[0], /vibe_balance, birth_date\) VALUES \(\$1, TRUE, NOW\(\), NOW\(\), \$2, 0, \$3\)/);
   });
 });
 
@@ -435,6 +443,70 @@ describe('country from location', () => {
     });
     assert.strictEqual(body.user.country, 'US');
     assert.strictEqual(verifyToken(body.token).country, 'US');
+  });
+});
+
+describe('date of birth', () => {
+  const { ageOn, checkBirthDate } = require(srcPath('config/age.js'));
+  const yearsAgo = (years, dayShift = 0) => {
+    const d = new Date();
+    d.setUTCFullYear(d.getUTCFullYear() - years);
+    d.setUTCDate(d.getUTCDate() + dayShift);
+    return d.toISOString().slice(0, 10);
+  };
+
+  beforeEach(() => {
+    queries = [];
+    sentEmails = [];
+    state = { conflict: false, guestExists: true, ledger: [] };
+  });
+
+  it('counts age in whole years and only accepts real dates of adults', () => {
+    assert.strictEqual(ageOn('2000-03-15', new Date('2026-03-14T12:00:00Z')), 25);
+    assert.strictEqual(ageOn('2000-03-15', new Date('2026-03-15T12:00:00Z')), 26);
+    assert.strictEqual(checkBirthDate(yearsAgo(18)).birthDate, yearsAgo(18));
+    assert.match(checkBirthDate(yearsAgo(18, 1)).error, /18 and over/);
+    assert.match(checkBirthDate('2001-02-30').error, /real date/);
+    assert.match(checkBirthDate('1890-01-01').error, /real date/);
+    assert.match(checkBirthDate('12/04/1998').error, /date of birth/);
+    assert.match(checkBirthDate(undefined).error, /date of birth/);
+  });
+
+  it("is required at registration, refuses under-18s and keeps a guest's existing date", async () => {
+    let result = await call(authController.register, { body: { ...REGISTRATION, birthDate: undefined } });
+    assert.strictEqual(result.status, 400);
+    result = await call(authController.register, { body: { ...REGISTRATION, birthDate: yearsAgo(16) } });
+    assert.match(result.body.error, /18 and over/);
+    assert.strictEqual(queries.length, 0);
+
+    await call(authController.register, { body: REGISTRATION, user: { id: GUEST_ID, isGuest: true } });
+    const upgrade = queries.find((q) => q.sql.startsWith('UPDATE users SET username'));
+    assert.match(upgrade.sql, /birth_date = COALESCE\(birth_date, \$8\)/);
+    assert.strictEqual(upgrade.params[7], '1998-04-12');
+  });
+
+  it('refuses a guest session for an under-18 birth date', async () => {
+    const result = await call(authController.createGuest, {
+      body: { ageConfirmed: true, termsAccepted: true, birthDate: yearsAgo(17) }
+    });
+    assert.strictEqual(result.status, 400);
+    assert.match(result.body.error, /18 and over/);
+  });
+
+  it('can be set once, puts the date in the token and shows the age', async () => {
+    const { body } = await call(authController.setBirthDate, {
+      body: { birthDate: '1998-04-12' }, user: { id: OTHER_ID, isGuest: false }
+    });
+    assert.strictEqual(body.user.birthDate, '1998-04-12');
+    assert.strictEqual(body.user.age, ageOn('1998-04-12'));
+    assert.strictEqual(verifyToken(body.token).birthDate, '1998-04-12');
+
+    // Same date again (e.g. a second device) is fine; a different one is refused
+    let result = await call(authController.setBirthDate, { body: { birthDate: '1998-04-12' }, user: { id: OTHER_ID } });
+    assert.strictEqual(result.status, 200);
+    result = await call(authController.setBirthDate, { body: { birthDate: '1990-01-01' }, user: { id: OTHER_ID } });
+    assert.strictEqual(result.status, 403);
+    assert.match(result.body.error, /can't be changed/);
   });
 });
 

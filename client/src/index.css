@@ -40,3 +40,37 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .like-pop, .heart-float { animation-duration: 1ms; }
 }
+
+/* Two stacked range inputs make one two-handle slider: only the thumbs take pointer events */
+.range-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+  height: 1.25rem;
+  margin: 0;
+}
+.range-thumb::-webkit-slider-runnable-track { background: transparent; }
+.range-thumb::-moz-range-track { background: transparent; }
+.range-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: #FFFFFF;
+  border: 3px solid #00F0FF;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+  cursor: grab;
+}
+.range-thumb::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #FFFFFF;
+  border: 3px solid #00F0FF;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+  cursor: grab;
+}
+.range-thumb:focus-visible::-webkit-slider-thumb { outline: 2px solid #FF2A7A; outline-offset: 2px; }

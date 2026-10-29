@@ -12,12 +12,18 @@ async function getCounts(userIds) {
 }
 
 /**
- * Adds one like and returns the new total (null if the user no longer exists)
+ * Adds one like and returns the new total (null if the user no longer exists).
+ * Each like is also logged with its time, for the weekly leaderboard.
  */
-async function addLike(userId) {
+async function addLike(userId, likerId) {
   const { rows } = await db.query(
-    'UPDATE users SET likes_received = likes_received + 1 WHERE id = $1 RETURNING likes_received',
-    [userId]
+    `WITH u AS (
+       UPDATE users SET likes_received = likes_received + 1 WHERE id = $1 RETURNING id, likes_received
+     ), logged AS (
+       INSERT INTO like_events (liked_id, liker_id) SELECT id, $2 FROM u
+     )
+     SELECT likes_received FROM u`,
+    [userId, likerId]
   );
   return rows[0] ? Number(rows[0].likes_received) : null;
 }

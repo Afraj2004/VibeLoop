@@ -10,7 +10,7 @@ if (!JWT_SECRET) {
 }
 
 /**
- * Issues a session token. Gender and country are embedded so the signaling
+ * Issues a session token. Gender, country and birth date are embedded so the signaling
  * hot path can matchmake without a database lookup.
  */
 function signToken(user) {
@@ -20,6 +20,7 @@ function signToken(user) {
       username: user.username,
       gender: user.gender || 'other',
       country: user.country_code || 'ALL',
+      birthDate: user.birth_date || null,
       isGuest: Boolean(user.is_guest)
     },
     JWT_SECRET,
