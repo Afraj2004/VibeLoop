@@ -53,7 +53,7 @@ function once(emitter, event, timeoutMs = 2000) {
 /**
  * Starts the signaling server. Must be called after the Redis/DB stubs are installed.
  */
-async function startSignalingServer() {
+async function startSignalingServer(options) {
   const { Server } = require('socket.io');
   const jwt = require('jsonwebtoken');
   const { io: ioClient } = require('socket.io-client');
@@ -61,7 +61,7 @@ async function startSignalingServer() {
 
   const server = http.createServer();
   const io = new Server(server);
-  registerSignaling(io);
+  registerSignaling(io, options);
   await new Promise((resolve) => server.listen(0, resolve));
   const { port } = server.address();
 

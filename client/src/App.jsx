@@ -26,7 +26,7 @@ import ControlBar from './components/hud/ControlBar.jsx';
 import LikeBurst from './components/hud/LikeBurst.jsx';
 import GenderLabel, { genderText } from './components/hud/GenderLabel.jsx';
 import { COUNTRIES, flagEmoji } from './utils/countries.js';
-import { Sparkles, AlertTriangle, Flag, UserPlus, Users, Heart } from 'lucide-react';
+import { Sparkles, AlertTriangle, Flag, UserPlus, Users, Heart, Loader2 } from 'lucide-react';
 
 const DEFAULT_PREFERENCES = { targetGender: 'any', targetCountry: 'ALL', minAge: FILTER_MIN_AGE, maxAge: FILTER_MAX_AGE };
 
@@ -115,7 +115,7 @@ export default function App() {
 
   const { socket, onlineCount } = useSocket(token, clearSession);
   const {
-    localStream, remoteStream, status, peer, isFriendCall, mediaError, matchError, findPartner, stop
+    localStream, remoteStream, status, peer, isFriendCall, reconnecting, mediaError, matchError, findPartner, stop
   } = useVibeWebRTC(socket, token, hasConsented);
   const stageError = sessionError || matchError || mediaError;
   const isMatched = status === 'connected';
@@ -601,6 +601,21 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* A dropped call trying to recover (network switch, tunnel) */}
+      {isMatched && reconnecting && (
+        <div
+          role="status"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 flex items-center gap-2.5 max-w-[85vw] px-4 py-3 rounded-2xl bg-black/70 border border-[#FFD166]/40 backdrop-blur-xl text-xs font-bold text-white shadow-xl"
+        >
+          <Loader2 size={16} className="shrink-0 animate-spin text-[#FFD166]" />
+          <span>
+            {reconnecting === 'partner'
+              ? `${peer?.username || 'Your partner'}'s connection dropped. Waiting for them...`
+              : 'Connection lost. Reconnecting...'}
+          </span>
+        </div>
+      )}
 
       {/* Partner: name, badges and Report / Block */}
       {isMatched && peer && (

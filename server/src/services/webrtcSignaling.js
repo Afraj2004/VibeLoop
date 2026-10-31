@@ -21,6 +21,9 @@ const CALL_LIMIT = { limit: 10, windowSeconds: 60 };
 // An unanswered friend call stops ringing after this long
 const CALL_RING_MS = 30 * 1000;
 
+// A call whose socket drops (network switch, tunnel) is held this long for the phone to come back
+const RESUME_GRACE_MS = 20 * 1000;
+
 const { isId } = require('../config/ids');
 
 /**
@@ -67,8 +70,11 @@ function clientIp(socket) {
  *
  * Call state (who is talking to whom) lives on socket.data, so SDP/ICE relays
  * only ever reach the socket's current partner, never an arbitrary socket ID.
+ *
+ * Calls survive a brief connection loss: a socket that drops mid-call is held for
+ * `resumeGraceMs`, and the same user reconnecting (new socket) takes its place with 'resume_call'.
  */
-function registerSignaling(io) {
+function registerSignaling(io, { resumeGraceMs = RESUME_GRACE_MS } = {}) {
   // Every socket must carry a valid session JWT (guest or registered)
   io.use((socket, next) => {
     try {
@@ -104,6 +110,24 @@ function registerSignaling(io) {
 
   // Ringing friend calls: callId -> { callId, callerSocketId, calleeId, timer }
   const pendingCalls = new Map();
+
+  // Who sits in each call: "roomId:userId" -> socket ID (moves to the new socket on resume)
+  const callSeats = new Map();
+  // Sockets that dropped mid-call and may still come back: socketId -> { socket, timer }
+  const droppedSockets = new Map();
+
+  const seatKey = (s) => `${s.data.roomId}:${s.data.user.id}`;
+  // A call partner may be connected, or dropped and waiting to resume
+  const findSocket = (id) => io.sockets.sockets.get(id) || droppedSockets.get(id)?.socket;
+
+  function leaveSeat(s) {
+    if (callSeats.get(seatKey(s)) === s.id) callSeats.delete(seatKey(s));
+    const dropped = droppedSockets.get(s.id);
+    if (dropped) {
+      clearTimeout(dropped.timer);
+      droppedSockets.delete(s.id);
+    }
+  }
 
   function takePendingCall(callId) {
     const call = pendingCalls.get(callId);
@@ -148,14 +172,16 @@ function registerSignaling(io) {
     const partnerId = socket.data.partnerId;
     if (!partnerId) return;
 
-    const partner = io.sockets.sockets.get(partnerId);
+    const partner = findSocket(partnerId);
     const wasFriendCall = Boolean(socket.data.friendCall);
     accrueCallTime(socket);
+    leaveSeat(socket);
     socket.data.partnerId = null;
     socket.data.friendCall = false;
 
     if (partner && partner.data.partnerId === socket.id) {
       accrueCallTime(partner);
+      leaveSeat(partner);
       partner.data.partnerId = null;
       partner.data.friendCall = false;
       partner.emit('partner_left');
@@ -186,6 +212,10 @@ function registerSignaling(io) {
       matchmaker.removeUser(target.id, target.data.user).catch(() => {});
       target.emit('match_error', { error: suspensionMessage(bannedUntil) });
     }
+    // A call they dropped out of can't be resumed either
+    for (const { socket: dropped } of [...droppedSockets.values()]) {
+      if (dropped.data.user.id === userId) endCall(dropped);
+    }
   }
 
   /**
@@ -197,6 +227,10 @@ function registerSignaling(io) {
 
     initiator.data.partnerId = receiver.id;
     receiver.data.partnerId = initiator.id;
+    initiator.data.roomId = roomId;
+    receiver.data.roomId = roomId;
+    callSeats.set(seatKey(initiator), initiator.id);
+    callSeats.set(seatKey(receiver), receiver.id);
     initiator.data.friendCall = friendCall;
     receiver.data.friendCall = friendCall;
     // One like per call, in each direction
@@ -239,6 +273,25 @@ function registerSignaling(io) {
         b.emit('peer_likes', { userId: idA, likes: counts[idA] || 0 });
       })
       .catch((err) => console.error('[VibeLoop Likes] count fetch failed:', err.message));
+  }
+
+  /**
+   * The socket dropped mid-call: keep the call open for a while so the user can resume it.
+   * Returns false when there is no live call to hold (the caller then ends it normally).
+   */
+  function holdCall(socket) {
+    const partner = io.sockets.sockets.get(socket.data.partnerId);
+    if (!partner || partner.data.partnerId !== socket.id) return false;
+
+    accrueCallTime(socket);
+    const timer = setTimeout(() => {
+      if (droppedSockets.get(socket.id)?.timer !== timer) return;
+      droppedSockets.delete(socket.id);
+      endCall(socket);
+    }, resumeGraceMs);
+    droppedSockets.set(socket.id, { socket, timer });
+    partner.emit('partner_reconnecting');
+    return true;
   }
 
   function relayToPartner(socket, event, payload) {
@@ -552,8 +605,37 @@ function registerSignaling(io) {
       pair(caller, socket, { friendCall: true });
     });
 
+    /**
+     * Back after a connection loss: take over this user's seat in the call, from a socket
+     * that dropped or one the server hasn't noticed is dead yet. Both sides are told,
+     * and the clients restart ICE to find a new network path.
+     */
+    socket.on('resume_call', ({ roomId } = {}) => {
+      const key = `${roomId}:${user.id}`;
+      const oldId = typeof roomId === 'string' ? callSeats.get(key) : null;
+      const old = oldId && oldId !== socket.id ? findSocket(oldId) : null;
+      const partner = old && io.sockets.sockets.get(old.data.partnerId);
+      if (!old || !partner || partner.data.partnerId !== old.id || socket.data.partnerId) {
+        return socket.emit('call_resume_failed', { roomId });
+      }
+
+      leaveSeat(old);
+      for (const field of ['partnerId', 'friendCall', 'likedPartner', 'connectedAt', 'roomId', 'boosted']) {
+        socket.data[field] = old.data[field];
+      }
+      // The time spent disconnected doesn't earn
+      socket.data.lastAccrualAt = Date.now();
+      old.data.partnerId = null;
+      partner.data.partnerId = socket.id;
+      callSeats.set(key, socket.id);
+      if (old.connected) old.disconnect(true);
+
+      socket.emit('call_resumed', { roomId });
+      partner.emit('partner_reconnected');
+    });
+
     socket.on('disconnect', async () => {
-      endCall(socket);
+      if (!holdCall(socket)) endCall(socket);
       cancelOutgoingCall(socket);
       broadcastOnlineCount();
       if (!user.isGuest && !isOnline(user.id)) {
