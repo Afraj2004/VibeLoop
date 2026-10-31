@@ -29,6 +29,9 @@ router.post('/auth/login', rateLimit({ name: 'login', limit: 10, windowSeconds: 
 // Email verification (codes are also rate-limited per account inside the service)
 router.post('/auth/verify-email', rateLimit({ name: 'verify-email', limit: 30, windowSeconds: 15 * 60 }), authController.verifyEmail);
 router.post('/auth/resend-code', rateLimit({ name: 'resend-code', limit: 10, windowSeconds: HOUR }), authController.resendCode);
+// Forgotten password: a code by email, then a new password
+router.post('/auth/forgot-password', rateLimit({ name: 'forgot-password', limit: 10, windowSeconds: HOUR }), authController.forgotPassword);
+router.post('/auth/reset-password', rateLimit({ name: 'reset-password', limit: 30, windowSeconds: 15 * 60 }), authController.resetPassword);
 router.get('/auth/me', auth, authController.getMe);
 router.patch(
   '/auth/profile',

@@ -5,6 +5,7 @@ import { apiFetch } from '../../utils/api.js';
 import { genderText } from '../hud/GenderLabel.jsx';
 import { getLocation } from '../../utils/location.js';
 import VerifyEmailStep from './VerifyEmailStep.jsx';
+import ForgotPasswordStep from './ForgotPasswordStep.jsx';
 import BirthDateInput from './BirthDateInput.jsx';
 import { ageFrom, MIN_AGE } from '../../utils/age.js';
 
@@ -24,12 +25,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
   const [loading, setLoading] = useState(false);
   // Set once the server asks for the emailed code: { email, error }
   const [verifying, setVerifying] = useState(null);
+  // "Forgot password?" flow replaces the form while true
+  const [resetting, setResetting] = useState(false);
 
   // Each time the modal opens, start on the tab the caller asked for
   useEffect(() => {
     if (isOpen) {
       setIsLogin(initialMode === 'login');
       setVerifying(null);
+      setResetting(false);
       if (knownBirthDate) setFormData((prev) => ({ ...prev, birthDate: knownBirthDate }));
     }
   }, [isOpen, initialMode, knownBirthDate]);
@@ -58,6 +62,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
     localStorage.setItem('vibeloop_user', JSON.stringify(data.user));
     onAuthSuccess(data.user, data.token, Boolean(data.upgraded), data.bonus || 0);
     setVerifying(null);
+    setResetting(false);
     onClose();
   };
 
@@ -139,7 +144,13 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
           </button>
         </div>
 
-        {verifying ? (
+        {resetting ? (
+          <ForgotPasswordStep
+            initialEmail={formData.email}
+            onDone={completeSignIn}
+            onBack={() => setResetting(false)}
+          />
+        ) : verifying ? (
           <VerifyEmailStep
             email={verifying.email}
             initialError={verifying.error}
@@ -231,6 +242,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
                 className="w-full bg-[#08090D] border border-slate-800 focus:border-[#00F0FF] rounded-xl pl-10 pr-3 py-2.5 text-xs text-white placeholder-slate-600 outline-none transition-colors"
               />
             </div>
+            {isLogin && (
+              <button
+                type="button"
+                onClick={() => { setResetting(true); setError(''); }}
+                className="mt-1.5 ml-auto block text-[11px] font-semibold text-[#00F0FF] hover:underline cursor-pointer"
+              >
+                Forgot password?
+              </button>
+            )}
           </div>
 
           {!isLogin && (

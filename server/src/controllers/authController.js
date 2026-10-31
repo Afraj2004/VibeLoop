@@ -43,6 +43,10 @@ function toPublicUser(user) {
   };
 }
 
+const checkPassword = (password) => (typeof password !== 'string' || password.length < 8 || password.length > 128
+  ? 'Password must be 8-128 characters'
+  : null);
+
 function validateRegistration({ username, email, password, gender, birthDate }) {
   if (!USERNAME_PATTERN.test(username || '')) {
     return 'Username must be 3-32 characters: letters, numbers or underscores';
@@ -51,9 +55,8 @@ function validateRegistration({ username, email, password, gender, birthDate }) 
   if (!EMAIL_PATTERN.test(trimmedEmail) || trimmedEmail.length > 255) {
     return 'A valid email address is required';
   }
-  if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
-    return 'Password must be 8-128 characters';
-  }
+  const passwordError = checkPassword(password);
+  if (passwordError) return passwordError;
   // Required: it is locked once the account exists (see updateProfile)
   if (!GENDERS.includes(gender)) {
     return 'Choose your gender';
@@ -381,8 +384,8 @@ exports.setBirthDate = async (req, res) => {
   }
 };
 
-// Accounts waiting for their code: registered (have a password) but not yet verified
-async function findPendingAccount(email) {
+// Registered accounts (they have a password), found by email in any letter case
+async function findPasswordAccount(email) {
   if (typeof email !== 'string' || !email.trim()) return null;
   const { rows } = await db.query(
     'SELECT * FROM users WHERE LOWER(email) = LOWER($1) AND password_hash IS NOT NULL',
@@ -398,7 +401,7 @@ async function findPendingAccount(email) {
  */
 exports.verifyEmail = async (req, res) => {
   try {
-    const user = await findPendingAccount(req.body?.email);
+    const user = await findPasswordAccount(req.body?.email);
     if (!user) {
       return res.status(400).json({ success: false, error: 'This code has expired. Ask for a new one.' });
     }
@@ -454,7 +457,7 @@ exports.verifyEmail = async (req, res) => {
  */
 exports.resendCode = async (req, res) => {
   try {
-    const user = await findPendingAccount(req.body?.email);
+    const user = await findPasswordAccount(req.body?.email);
     if (user && !user.email_verified_at) {
       await verification.sendCode(user);
     }
@@ -465,5 +468,84 @@ exports.resendCode = async (req, res) => {
     }
     console.error('Resend Code Error:', err.message);
     res.status(502).json({ success: false, error: "We couldn't send the code right now. Please try again shortly." });
+  }
+};
+
+/**
+ * POST /api/auth/forgot-password  { email }
+ * Emails a password reset code. The reply is the same whether or not an account uses the email.
+ */
+exports.forgotPassword = async (req, res) => {
+  try {
+    const user = await findPasswordAccount(req.body?.email);
+    if (user) await verification.sendCode(user, 'reset');
+    res.json({ success: true });
+  } catch (err) {
+    // Inside the resend cooldown the earlier code still works; answering differently would reveal the account
+    if (err instanceof verification.VerificationError) return res.json({ success: true });
+    console.error('Forgot Password Error:', err.message);
+    res.status(502).json({ success: false, error: "We couldn't send the code right now. Please try again shortly." });
+  }
+};
+
+/**
+ * POST /api/auth/reset-password  { email, code, password }
+ * A correct code sets the new password and signs the person in. Getting the code proves they own
+ * the inbox, so an account still waiting for email verification is verified too (with the sign-up
+ * bonus it was waiting for, never twice).
+ */
+exports.resetPassword = async (req, res) => {
+  const passwordError = checkPassword(req.body?.password);
+  if (passwordError) {
+    return res.status(400).json({ success: false, error: passwordError });
+  }
+
+  try {
+    const user = await findPasswordAccount(req.body?.email);
+    if (!user) {
+      return res.status(400).json({ success: false, error: 'This code has expired. Ask for a new one.' });
+    }
+    await verification.checkCode(user, req.body?.code, 'reset');
+
+    const passwordHash = await bcrypt.hash(req.body.password, await bcrypt.genSalt(10));
+    const { rows } = await db.query(
+      `WITH prior AS (
+         SELECT (u.email_verified_at IS NOT NULL OR EXISTS (
+           SELECT 1 FROM token_transactions WHERE user_id = $1 AND transaction_type = 'SIGNUP_BONUS'
+         )) AS skip_bonus
+         FROM users u WHERE u.id = $1
+       ), u AS (
+         UPDATE users
+         SET password_hash = $3, reset_code_hash = NULL, reset_expires_at = NULL, reset_attempts = 0,
+             is_guest = FALSE, is_verified = TRUE, email_verified_at = COALESCE(email_verified_at, NOW()),
+             verification_code_hash = NULL, verification_expires_at = NULL, verification_attempts = 0,
+             vibe_balance = vibe_balance + CASE WHEN (SELECT skip_bonus FROM prior) THEN 0 ELSE $2 END
+         WHERE id = $1 AND reset_code_hash = $4
+         RETURNING ${USER_COLUMNS}, NOT (SELECT skip_bonus FROM prior) AS bonus_paid
+       ), bonus AS (
+         INSERT INTO token_transactions (user_id, amount, transaction_type)
+         SELECT id, $2, 'SIGNUP_BONUS' FROM u WHERE bonus_paid
+       )
+       SELECT * FROM u`,
+      [user.id, REWARDS.SIGNUP, passwordHash, user.reset_code_hash]
+    );
+    // The same code was just used by another request
+    const updated = rows[0];
+    if (!updated) {
+      return res.status(400).json({ success: false, error: 'This code has expired. Ask for a new one.' });
+    }
+
+    res.json({
+      success: true,
+      token: signToken(updated),
+      user: toPublicUser(updated),
+      bonus: updated.bonus_paid ? REWARDS.SIGNUP : 0
+    });
+  } catch (err) {
+    if (err instanceof verification.VerificationError) {
+      return res.status(err.status).json({ success: false, error: err.message, ...err.details });
+    }
+    console.error('Reset Password Error:', err);
+    res.status(500).json({ success: false, error: 'Server error resetting your password' });
   }
 };

@@ -72,6 +72,26 @@ stubModule('config/db.js', {
       state.account.verification_attempts += 1;
       return { rows: [] };
     }
+    if (sql.startsWith('UPDATE users SET reset_code_hash')) {
+      Object.assign(state.account, {
+        reset_code_hash: params[1], reset_attempts: 0, reset_sent_at: new Date(),
+        reset_expires_at: new Date(Date.now() + params[2] * 60000)
+      });
+      return { rows: [] };
+    }
+    if (sql.startsWith('UPDATE users SET reset_attempts = reset_attempts + 1')) {
+      state.account.reset_attempts += 1;
+      return { rows: [] };
+    }
+    // Password reset: guarded by the code hash it was checked against
+    if (sql.startsWith('WITH prior AS ( SELECT (u.email_verified_at')) {
+      if (state.account.reset_code_hash !== params[3]) return { rows: [] };
+      const bonusPaid = !state.account.email_verified_at && !state.bonusAlreadyPaid;
+      Object.assign(state.account, {
+        password_hash: params[2], reset_code_hash: null, email_verified_at: state.account.email_verified_at || new Date()
+      });
+      return { rows: [userRow(params[0], { is_guest: false, bonus_paid: bonusPaid })] };
+    }
     if (sql.startsWith('WITH prior AS')) {
       if (state.account.email_verified_at) return { rows: [] };
       state.account.email_verified_at = new Date();
@@ -443,6 +463,85 @@ describe('country from location', () => {
     });
     assert.strictEqual(body.user.country, 'US');
     assert.strictEqual(verifyToken(body.token).country, 'US');
+  });
+});
+
+describe('forgot password', () => {
+  const bcrypt = require('bcryptjs');
+  const forgot = (email = 'me@example.com') => call(authController.forgotPassword, { body: { email } });
+  const reset = (code, password = 'brandnew123', email = 'me@example.com') =>
+    call(authController.resetPassword, { body: { email, code, password } });
+
+  beforeEach(() => {
+    queries = [];
+    sentEmails = [];
+    emailFails = false;
+    state = { conflict: false, guestExists: true, ledger: [], account: pendingRow(OTHER_ID, { email_verified_at: new Date() }) };
+  });
+
+  it('emails a reset code, answering the same for unknown emails and during the cooldown', async () => {
+    let result = await forgot('ME@example.com');
+    assert.deepStrictEqual(result.body, { success: true });
+    assert.strictEqual(sentEmails.length, 1);
+    assert.match(sentEmails[0].subject, /^\d{6} is your VibeLoop password reset code$/);
+    assert.match(sentEmails[0].text, /Your password hasn't changed/);
+    // Stored apart from sign-up verification codes
+    assert.ok(state.account.reset_code_hash);
+    assert.strictEqual(state.account.verification_code_hash, null);
+
+    result = await forgot();
+    assert.deepStrictEqual(result.body, { success: true });
+    assert.strictEqual(sentEmails.length, 1, 'no second email inside the cooldown');
+
+    result = await forgot('nobody@example.com');
+    assert.deepStrictEqual(result.body, { success: true });
+  });
+
+  it('sets the new password and signs in with the right code, which then stops working', async () => {
+    await forgot();
+    const wrong = lastCode() === '000000' ? '111111' : '000000';
+    let result = await reset(wrong);
+    assert.strictEqual(result.status, 400);
+    assert.match(result.body.error, /4 tries left/);
+
+    result = await reset(lastCode());
+    assert.strictEqual(result.status, 200);
+    assert.ok(verifyToken(result.body.token));
+    assert.ok(await bcrypt.compare('brandnew123', state.account.password_hash));
+    assert.strictEqual(result.body.bonus, 0, 'already verified: no bonus');
+
+    result = await reset(lastCode());
+    assert.strictEqual(result.status, 400);
+    assert.match(result.body.error, /expired/);
+  });
+
+  it('rejects a short password before touching the code, and sign-up codes never reset passwords', async () => {
+    await forgot();
+    let result = await reset(lastCode(), 'short');
+    assert.match(result.body.error, /8-128/);
+    assert.strictEqual(state.account.reset_attempts, 0);
+
+    // A verification code (other columns) is not a reset code
+    state.account.reset_code_hash = null;
+    result = await reset(lastCode());
+    assert.match(result.body.error, /expired/);
+  });
+
+  it('verifies an account still waiting for its email code, paying the bonus it was owed', async () => {
+    state.account.email_verified_at = null;
+    await forgot();
+    const result = await reset(lastCode());
+    assert.strictEqual(result.body.bonus, REWARDS.SIGNUP);
+    assert.ok(state.account.email_verified_at);
+    const update = queries.find((q) => q.sql.startsWith('WITH prior AS ( SELECT (u.email_verified_at'));
+    assert.match(update.sql, /email_verified_at = COALESCE\(email_verified_at, NOW\(\)\)/);
+    assert.match(update.sql, /WHERE id = \$1 AND reset_code_hash = \$4/);
+  });
+
+  it('says so when the email service is down', async () => {
+    emailFails = true;
+    const result = await forgot();
+    assert.strictEqual(result.status, 502);
   });
 });
 

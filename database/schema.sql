@@ -197,6 +197,12 @@ CREATE TABLE IF NOT EXISTS like_events (
 );
 CREATE INDEX IF NOT EXISTS idx_like_events_time ON like_events(created_at, liked_id);
 
+-- Password reset codes (same rules as verification codes, separate so neither can stand in for the other)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_hash VARCHAR(64);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_sent_at TIMESTAMP WITH TIME ZONE;
+
 -- Supabase's public Data API (anon / authenticated roles) must never see these tables.
 -- RLS with no policies denies those roles everything; the server connects as the table owner,
 -- which RLS does not restrict.
