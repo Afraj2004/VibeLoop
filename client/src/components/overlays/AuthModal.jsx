@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, User, Mail, Lock, Sparkles, LogIn, UserPlus, MapPin, Loader2, Check } from 'lucide-react';
+import { X, User, Mail, Lock, Sparkles, LogIn, UserPlus, MapPin, Loader2, Check, Eye, EyeOff } from 'lucide-react';
 import { countryName, flagEmoji } from '../../utils/countries.js';
 import { apiFetch } from '../../utils/api.js';
 import { genderText } from '../hud/GenderLabel.jsx';
@@ -27,6 +27,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
   const [verifying, setVerifying] = useState(null);
   // "Forgot password?" flow replaces the form while true
   const [resetting, setResetting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Each time the modal opens, start on the tab the caller asked for
   useEffect(() => {
@@ -34,6 +35,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
       setIsLogin(initialMode === 'login');
       setVerifying(null);
       setResetting(false);
+      setShowPassword(false);
       if (knownBirthDate) setFormData((prev) => ({ ...prev, birthDate: knownBirthDate }));
     }
   }, [isOpen, initialMode, knownBirthDate]);
@@ -234,13 +236,23 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
             <div className="relative">
               <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 placeholder="••••••••"
+                autoComplete={isLogin ? 'current-password' : 'new-password'}
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full bg-[#08090D] border border-slate-800 focus:border-[#00F0FF] rounded-xl pl-10 pr-3 py-2.5 text-xs text-white placeholder-slate-600 outline-none transition-colors"
+                className="w-full bg-[#08090D] border border-slate-800 focus:border-[#00F0FF] rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-slate-600 outline-none transition-colors"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white cursor-pointer"
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
             </div>
             {isLogin && (
               <button
