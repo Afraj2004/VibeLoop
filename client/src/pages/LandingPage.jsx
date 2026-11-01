@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowRight, Sparkles, Video, Coins, Gift, Zap, Globe, ShieldCheck, Lock, Flag, SkipForward, ChevronDown
 } from 'lucide-react';
 import { LEGAL_CONTACT } from '../legal/content.js';
+import { getInviteCode } from '../utils/referral.js';
+import { apiFetch } from '../utils/api.js';
 
 const APP_PATH = '/chat';
 
@@ -127,12 +129,48 @@ function HeroMock() {
   );
 }
 
+// Search landing pages (built as static HTML from client/seo/pages.js)
+const GUIDES = [
+  { href: '/omegle-alternative', label: 'Omegle alternative' },
+  { href: '/talk-to-strangers', label: 'Talk to strangers' },
+  { href: '/video-chat-india', label: 'Video chat in India' }
+];
+
+/**
+ * Shown to people who arrived through a friend's invite link
+ */
+function InviteBanner() {
+  const [rewards, setRewards] = useState(null);
+  const invited = Boolean(getInviteCode());
+
+  useEffect(() => {
+    if (!invited) return;
+    apiFetch('/api/referrals')
+      .then((data) => setRewards(data.rewards))
+      .catch(() => {});
+  }, [invited]);
+
+  if (!invited) return null;
+  return (
+    <div className="bg-gradient-to-r from-[#3DDC97]/15 via-[#00F0FF]/10 to-[#3DDC97]/15 border-b border-[#3DDC97]/30">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs sm:text-sm text-center">
+        <span className="font-bold text-white">🎁 A friend invited you to VibeLoop!</span>
+        <span className="text-slate-300">
+          Create an account and get {rewards ? `+${rewards.invitee} VIBE` : 'extra VIBE'} on top of the welcome bonus.
+        </span>
+        <a href={APP_PATH} className="font-extrabold text-[#3DDC97] hover:underline">Start now →</a>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Public home page. The app itself lives at /chat so the camera is only requested there.
  */
 export default function LandingPage() {
   return (
     <div className="h-screen supports-[height:100dvh]:h-dvh overflow-y-auto overflow-x-hidden bg-[#08090D] text-slate-300 select-text scroll-smooth">
+      <InviteBanner />
       {/* Nav */}
       <header className="sticky top-0 z-40 bg-[#08090D]/80 backdrop-blur-xl border-b border-slate-900">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -274,6 +312,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p>© {new Date().getFullYear()} VibeLoop · Bengaluru, India · 18+ only</p>
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-2">
+            {GUIDES.map((g) => <a key={g.href} href={g.href} className="hover:text-white">{g.label}</a>)}
             <a href="/terms" className="hover:text-white">Terms</a>
             <a href="/privacy" className="hover:text-white">Privacy</a>
             <span>{LEGAL_CONTACT}</span>

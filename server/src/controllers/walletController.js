@@ -152,7 +152,9 @@ exports.getTransactions = async (req, res) => {
     const { rows } = await db.query(
       `SELECT t.id, t.amount, t.transaction_type, t.metadata, t.created_at, c.username AS counterparty
        FROM token_transactions t
-       LEFT JOIN users c ON c.id = COALESCE(t.metadata->>'recipientId', t.metadata->>'senderId')::bigint
+       LEFT JOIN users c ON c.id = COALESCE(
+         t.metadata->>'recipientId', t.metadata->>'senderId', t.metadata->>'inviteeId', t.metadata->>'inviterId'
+       )::bigint
        WHERE t.user_id = $1
        ORDER BY t.created_at DESC
        LIMIT 50`,

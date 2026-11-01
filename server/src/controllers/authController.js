@@ -5,6 +5,7 @@ const { signToken } = require('../config/jwt');
 const { REWARDS } = require('../config/economy');
 const { countryFromLocation } = require('../services/geo');
 const verification = require('../services/verification');
+const referrals = require('../services/referrals');
 const { ageOn, checkBirthDate } = require('../config/age');
 const { SUPPORT_EMAIL } = require('../services/email');
 
@@ -84,9 +85,10 @@ exports.createGuest = async (req, res) => {
   try {
     const username = `guest_${crypto.randomBytes(4).toString('hex')}`;
     const result = await db.query(
-      `INSERT INTO users (username, is_guest, age_confirmed_at, terms_accepted_at, terms_version, vibe_balance, birth_date)
-       VALUES ($1, TRUE, NOW(), NOW(), $2, 0, $3) RETURNING ${USER_COLUMNS}`,
-      [username, TERMS_VERSION, birthDate]
+      `INSERT INTO users (username, is_guest, age_confirmed_at, terms_accepted_at, terms_version, vibe_balance, birth_date,
+                          referred_by)
+       VALUES ($1, TRUE, NOW(), NOW(), $2, 0, $3, ${referrals.inviterBy('$4')}) RETURNING ${USER_COLUMNS}`,
+      [username, TERMS_VERSION, birthDate, referrals.normalizeCode(req.body.ref)]
     );
     const user = result.rows[0];
 
@@ -150,10 +152,10 @@ exports.register = async (req, res) => {
         `UPDATE users
          SET username = $2, email = $3, password_hash = $4, gender = $5, country_code = $6,
              age_confirmed_at = NOW(), terms_accepted_at = NOW(), terms_version = $7, verification_sent_at = NULL,
-             birth_date = COALESCE(birth_date, $8)
+             birth_date = COALESCE(birth_date, $8), referred_by = COALESCE(referred_by, ${referrals.inviterBy('$9')})
          WHERE id = $1 AND is_guest = TRUE
          RETURNING ${PENDING_COLUMNS}`,
-        [guestId, username, email, passwordHash, gender, country, TERMS_VERSION, birthDate]
+        [guestId, username, email, passwordHash, gender, country, TERMS_VERSION, birthDate, referrals.normalizeCode(req.body.ref)]
       );
       // Falls through to a fresh account if the guest row no longer exists
       pending = upgraded.rows[0] || null;
@@ -162,9 +164,9 @@ exports.register = async (req, res) => {
     if (!pending) {
       const inserted = await db.query(
         `INSERT INTO users (username, email, password_hash, gender, country_code,
-                            age_confirmed_at, terms_accepted_at, terms_version, vibe_balance, birth_date)
-         VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, 0, $7) RETURNING ${PENDING_COLUMNS}`,
-        [username, email, passwordHash, gender, country, TERMS_VERSION, birthDate]
+                            age_confirmed_at, terms_accepted_at, terms_version, vibe_balance, birth_date, referred_by)
+         VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, 0, $7, ${referrals.inviterBy('$8')}) RETURNING ${PENDING_COLUMNS}`,
+        [username, email, passwordHash, gender, country, TERMS_VERSION, birthDate, referrals.normalizeCode(req.body.ref)]
       );
       pending = inserted.rows[0];
     }
@@ -384,6 +386,13 @@ exports.setBirthDate = async (req, res) => {
   }
 };
 
+// A newly verified account may already have the call time an invite needs (e.g. from guest days)
+function payInvites(req, userId) {
+  referrals
+    .rewardAndNotify(req.app?.get?.('io'), [userId])
+    .catch((err) => console.error('[VibeLoop Referrals] reward failed:', err.message));
+}
+
 // Registered accounts (they have a password), found by email in any letter case
 async function findPasswordAccount(email) {
   if (typeof email !== 'string' || !email.trim()) return null;
@@ -442,6 +451,7 @@ exports.verifyEmail = async (req, res) => {
       bonus: verified.bonus_paid ? REWARDS.SIGNUP : 0,
       upgraded: Boolean(user.is_guest)
     });
+    payInvites(req, verified.id);
   } catch (err) {
     if (err instanceof verification.VerificationError) {
       return res.status(err.status).json({ success: false, error: err.message, ...err.details });
@@ -541,6 +551,7 @@ exports.resetPassword = async (req, res) => {
       user: toPublicUser(updated),
       bonus: updated.bonus_paid ? REWARDS.SIGNUP : 0
     });
+    payInvites(req, updated.id);
   } catch (err) {
     if (err instanceof verification.VerificationError) {
       return res.status(err.status).json({ success: false, error: err.message, ...err.details });

@@ -10,6 +10,7 @@ const paymentsController = require('../controllers/paymentsController');
 const profileController = require('../controllers/profileController');
 const friendsController = require('../controllers/friendsController');
 const leaderboardController = require('../controllers/leaderboardController');
+const referralsController = require('../controllers/referralsController');
 const requireAdmin = require('../middlewares/requireAdmin');
 const auth = require('../middlewares/auth');
 const optionalAuth = require('../middlewares/optionalAuth');
@@ -56,6 +57,9 @@ router.patch(
   rateLimit({ name: 'birth-date', limit: 10, windowSeconds: HOUR, by: 'user' }),
   authController.setBirthDate
 );
+
+// Invite friends: your code and rewards
+router.get('/referrals', rateLimit({ name: 'referrals', limit: 120, windowSeconds: HOUR }), optionalAuth, referralsController.get);
 
 // Most-liked accounts, this week and all time
 router.get('/leaderboard', rateLimit({ name: 'leaderboard', limit: 120, windowSeconds: HOUR }), optionalAuth, leaderboardController.get);
@@ -122,6 +126,7 @@ router.post(
 
 // Moderation (admins only)
 router.get('/admin/reports', auth, requireAdmin, adminController.listReportedUsers);
+router.get('/admin/stats', auth, requireAdmin, adminController.getStats);
 router.post('/admin/users/:id/ban', auth, requireAdmin, adminController.banUser);
 router.post('/admin/users/:id/unban', auth, requireAdmin, adminController.unbanUser);
 router.post('/admin/users/:id/dismiss', auth, requireAdmin, adminController.dismissReports);

@@ -115,3 +115,52 @@ exports.dismissReports = async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error dismissing reports' });
   }
 };
+
+// Growth numbers are grouped by India calendar day
+const DAY = (column) => `(${column} AT TIME ZONE 'Asia/Kolkata')::date`;
+const STATS_DAYS = 14;
+
+/**
+ * GET /api/admin/stats
+ * Daily growth numbers for the last STATS_DAYS days (newest first) plus all-time totals.
+ * match_history has one row per person per call, so calls are rows / 2.
+ */
+exports.getStats = async (req, res) => {
+  try {
+    const [daily, totals] = await Promise.all([
+      db.query(
+        `WITH days AS (
+           SELECT generate_series(${DAY('NOW()')} - ($1::int - 1), ${DAY('NOW()')}, INTERVAL '1 day')::date AS day
+         )
+         SELECT d.day,
+           (SELECT COUNT(*) FROM users u WHERE ${DAY('u.created_at')} = d.day)::int AS new_visitors,
+           (SELECT COUNT(*) FROM users u WHERE ${DAY('u.email_verified_at')} = d.day)::int AS new_accounts,
+           (SELECT COUNT(DISTINCT m.user_id) FROM match_history m WHERE ${DAY('m.created_at')} = d.day)::int AS active_users,
+           (SELECT COUNT(*) / 2 FROM match_history m WHERE ${DAY('m.created_at')} = d.day)::int AS calls,
+           (SELECT ROUND(AVG(m.duration_seconds)) FROM match_history m WHERE ${DAY('m.created_at')} = d.day)::int AS avg_call_seconds,
+           (SELECT COUNT(DISTINCT a.user_id) FROM match_history a
+            WHERE ${DAY('a.created_at')} = d.day AND EXISTS (
+              SELECT 1 FROM match_history b WHERE b.user_id = a.user_id AND ${DAY('b.created_at')} = d.day + 1
+            ))::int AS returned_next_day,
+           (SELECT COUNT(*) FROM like_events l WHERE ${DAY('l.created_at')} = d.day)::int AS likes,
+           (SELECT COUNT(*) FROM users u WHERE ${DAY('u.referral_rewarded_at')} = d.day)::int AS invites_paid,
+           (SELECT COALESCE(SUM(p.amount_paise), 0) FROM payments p
+            WHERE p.status = 'paid' AND ${DAY('p.paid_at')} = d.day)::int AS revenue_paise
+         FROM days d ORDER BY d.day DESC`,
+        [STATS_DAYS]
+      ),
+      db.query(
+        `SELECT COUNT(*) FILTER (WHERE NOT is_guest AND email_verified_at IS NOT NULL)::int AS accounts,
+                COUNT(*) FILTER (WHERE is_guest)::int AS guests,
+                COUNT(*) FILTER (WHERE referred_by IS NOT NULL AND email_verified_at IS NOT NULL)::int AS invited_accounts,
+                (SELECT COUNT(*) / 2 FROM match_history)::int AS calls,
+                (SELECT COALESCE(SUM(amount_paise), 0) FROM payments WHERE status = 'paid')::int AS revenue_paise
+         FROM users`
+      )
+    ]);
+    res.json({ success: true, days: daily.rows, totals: totals.rows[0] });
+  } catch (err) {
+    console.error('Admin Stats Error:', err);
+    res.status(500).json({ success: false, error: 'Server error loading stats' });
+  }
+};

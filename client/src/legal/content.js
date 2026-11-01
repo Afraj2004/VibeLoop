@@ -113,7 +113,8 @@ export const PRIVACY = {
         'Activity: who you were matched with for 20 seconds or more and for how long; in-call chat messages (only the last 30 per conversation are kept); VIBE token balances and transactions; gifts sent and received.',
         'Safety: reports you file (including your IP address at the time, used to stop fake mass-reporting), reports about you, blocks, and any suspensions.',
         'Payments: when you buy VIBE we store the pack, amount, Razorpay order and payment IDs, and status. Card, UPI and bank details are entered on Razorpay and never reach VibeLoop.',
-        'Technical: IP address (used for rate limiting and security), browser information needed to set up calls, and server logs kept by our hosting providers.'
+        'Invites: your invite code, which account invited you (if any) and when an invite reward was paid.',
+        'Technical: IP address (used for rate limiting and security), browser information needed to set up calls, and server logs kept by our hosting providers. We count page visits with Vercel Web Analytics, which uses no cookies and does not identify you.'
       ]
     },
     {
@@ -121,6 +122,7 @@ export const PRIVACY = {
       bullets: [
         'to connect you with other users according to your filters;',
         'to run token rewards, gifts and your recent-contacts list;',
+        'to run invites: to pay invite rewards we check that the invited account is verified and has spent enough time in calls (not who they talked to or what was said);',
         'to show the likes leaderboard, which lists registered accounts by username, photo, country and likes received;',
         'to keep the service safe: enforcing the Community Guidelines, investigating reports, preventing spam, fraud and abuse;',
         'to comply with law and respond to lawful requests.'
@@ -130,7 +132,7 @@ export const PRIVACY = {
     {
       heading: '4. Who we share it with',
       paragraphs: [
-        'The person you are matched with sees your video, audio, username, age, country (if set), likes and chat messages. If you have a registered account, anyone using VibeLoop can see your username, photo, country and like count on the leaderboard. We use these service providers to run VibeLoop, who process data only on our instructions: Render (application hosting), Vercel (website hosting), Supabase (database), Upstash (in-memory data store), Cloudflare (call relay), Razorpay (payments), Brevo (sending verification emails) and Better Stack (uptime monitoring). Google\'s public STUN servers help your browser find a network route for calls. These providers may store data in India or other countries, including the United States. We may disclose data where required by law or to protect users\' safety.'
+        'The person you are matched with sees your video, audio, username, age, country (if set), likes and chat messages. If you have a registered account, anyone using VibeLoop can see your username, photo, country and like count on the leaderboard. If you joined through an invite, the person who invited you sees your username when their invite reward is paid. We use these service providers to run VibeLoop, who process data only on our instructions: Render (application hosting), Vercel (website hosting and cookie-free visit counts), Supabase (database), Upstash (in-memory data store), Cloudflare (call relay), Razorpay (payments), Brevo (sending verification emails) and Better Stack (uptime monitoring). Google\'s public STUN servers help your browser find a network route for calls. These providers may store data in India or other countries, including the United States. We may disclose data where required by law or to protect users\' safety.'
       ]
     },
     {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, RefreshCw, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ShieldAlert, BarChart3 } from 'lucide-react';
 import { apiFetch } from '../utils/api.js';
 
 const REASON_LABELS = {
@@ -20,6 +20,94 @@ const BAN_OPTIONS = [
 
 function formatTime(value) {
   return new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+const rupees = (paise) => `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+const minutes = (seconds) => (seconds ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : '–');
+
+// [heading, row field, formatter, tooltip]
+const STAT_COLUMNS = [
+  ['New visitors', 'new_visitors', String, 'Guest sessions started (passed the 18+ screen)'],
+  ['New accounts', 'new_accounts', String, 'Emails verified'],
+  ['Active', 'active_users', String, 'People who had a call of 20s or more'],
+  ['Calls', 'calls', String, 'Calls of 20s or more'],
+  ['Avg call', 'avg_call_seconds', minutes, 'Average length of those calls'],
+  ['Back next day', 'returned_next_day', String, 'Of the active people, how many had a call the next day too'],
+  ['Likes', 'likes', String, 'Likes sent in calls'],
+  ['Invites paid', 'invites_paid', String, 'Invites that qualified and were paid'],
+  ['Revenue', 'revenue_paise', rupees, 'VIBE packs paid']
+];
+
+/**
+ * Growth numbers for the last two weeks (India days), newest first
+ */
+function StatsPanel({ token }) {
+  const [stats, setStats] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch('/api/admin/stats', { token })
+      .then(setStats)
+      .catch((err) => setError(err.message));
+  }, [token]);
+
+  if (error) return <p className="text-sm text-red-300 mb-8">Stats: {error}</p>;
+  if (!stats) return <p className="text-sm text-slate-500 mb-8">Loading stats…</p>;
+
+  const { totals } = stats;
+  const tiles = [
+    ['Accounts', totals.accounts],
+    ['Guest sessions', totals.guests],
+    ['Joined by invite', totals.invited_accounts],
+    ['Calls (20s+)', totals.calls],
+    ['Revenue', rupees(totals.revenue_paise)]
+  ];
+
+  return (
+    <section className="mb-10">
+      <h2 className="flex items-center gap-2 text-xl font-extrabold text-white mb-1">
+        <BarChart3 className="text-[#00F0FF]" size={20} />
+        <span>Growth</span>
+      </h2>
+      <p className="text-xs text-slate-500 mb-4">
+        Last 14 days, India time. Page views are in Vercel → Analytics. Hover a heading for what it counts.
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+        {tiles.map(([label, value]) => (
+          <div key={label} className="p-3 rounded-2xl bg-[#12151E] border border-slate-800">
+            <div className="text-lg font-extrabold text-white">{value}</div>
+            <div className="text-[11px] text-slate-500">{label}</div>
+          </div>
+        ))}
+      </div>
+      <div className="overflow-x-auto rounded-2xl border border-slate-800">
+        <table className="w-full text-xs">
+          <thead className="bg-[#12151E] text-slate-400">
+            <tr>
+              <th className="text-left font-semibold px-3 py-2 whitespace-nowrap">Day</th>
+              {STAT_COLUMNS.map(([heading, , , tip]) => (
+                <th key={heading} title={tip} className="text-right font-semibold px-3 py-2 whitespace-nowrap cursor-help">{heading}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {stats.days.map((day) => (
+              <tr key={day.day} className="border-t border-slate-800/80">
+                <td className="px-3 py-2 whitespace-nowrap text-slate-300">
+                  {new Date(`${day.day}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
+                </td>
+                {STAT_COLUMNS.map(([heading, field, format]) => (
+                  <td key={heading} className={`px-3 py-2 text-right tabular-nums ${day[field] ? 'text-white' : 'text-slate-600'}`}>
+                    {format(day[field] || 0)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 
 function ReportedUserCard({ user, token, onDone }) {
@@ -140,6 +228,8 @@ export default function AdminPage() {
             <span>Refresh</span>
           </button>
         </div>
+
+        {token && !error && <StatsPanel token={token} />}
 
         <h1 className="flex items-center gap-2 text-2xl font-extrabold text-white mb-1">
           <ShieldAlert className="text-red-400" size={22} />

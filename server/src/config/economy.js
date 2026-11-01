@@ -30,6 +30,15 @@ const REWARDS = {
   PROFILE_PHOTO: 1 // first profile photo
 };
 
+// Invites: both people are paid once the invited person has a verified account and
+// QUALIFY_CALL_SECONDS of calls with others (see services/referrals.js)
+const REFERRAL = {
+  INVITER: 5,
+  INVITEE: 3, // on top of the sign-up bonus
+  QUALIFY_CALL_SECONDS: 10 * 60,
+  MONTHLY_CAP: 10 // paid invites per inviter per 30 days
+};
+
 // VIBE top-up packs (prices in INR, GST inclusive). Sample values: tune before going live.
 const VIBE_PACKAGES = [
   { id: 'starter', vibe: 50, priceInr: 49 },
@@ -39,4 +48,4 @@ const VIBE_PACKAGES = [
 
 const roundVibe = (amount) => Math.round(amount * 100) / 100;
 
-module.exports = { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, REWARDS, VIBE_PACKAGES, roundVibe };
+module.exports = { GIFT_CATALOG, GIFT_RECIPIENT_SHARE, M2E, BOOST, REWARDS, REFERRAL, VIBE_PACKAGES, roundVibe };

@@ -203,6 +203,13 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires_at TIMESTAMP WITH TIME 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_sent_at TIMESTAMP WITH TIME ZONE;
 
+-- Invites: each registered account's code, who invited whom, and when the invite paid out
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(12);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_rewarded_at TIMESTAMP WITH TIME ZONE;
+CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
+
 -- Supabase's public Data API (anon / authenticated roles) must never see these tables.
 -- RLS with no policies denies those roles everything; the server connects as the table owner,
 -- which RLS does not restrict.
