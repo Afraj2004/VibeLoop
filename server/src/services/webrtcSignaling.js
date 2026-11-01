@@ -9,6 +9,7 @@ const boost = require('./boost');
 const friends = require('./friends');
 const likes = require('./likes');
 const leaderboard = require('./leaderboard');
+const referrals = require('./referrals');
 const { ageOn } = require('../config/age');
 const { consume } = require('../middlewares/rateLimiter');
 
@@ -194,6 +195,8 @@ function registerSignaling(io, { resumeGraceMs = RESUME_GRACE_MS } = {}) {
           if (recorded) {
             socket.emit('history_updated');
             partner.emit('history_updated');
+            const registered = [socket.data.user, partner.data.user].filter((u) => !u.isGuest).map((u) => u.id);
+            return referrals.rewardAndNotify(io, registered);
           }
         })
         .catch((err) => console.error('[VibeLoop History] record failed:', err.message));

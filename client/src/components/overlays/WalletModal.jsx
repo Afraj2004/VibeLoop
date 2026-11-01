@@ -17,6 +17,10 @@ function describe(tx) {
       return { label: 'Welcome bonus for signing up', Icon: Sparkles, tone: 'text-[#FFD166]' };
     case 'PROFILE_PHOTO_BONUS':
       return { label: 'Bonus for adding a profile photo', Icon: Sparkles, tone: 'text-[#FFD166]' };
+    case 'REFERRAL_REWARD':
+      return { label: `${tx.counterparty || 'A friend'} joined with your invite`, Icon: Gift, tone: 'text-[#3DDC97]' };
+    case 'REFERRAL_JOINED':
+      return { label: `Bonus for joining with ${tx.counterparty ? `${tx.counterparty}'s` : 'a friend\'s'} invite`, Icon: Gift, tone: 'text-[#3DDC97]' };
     case 'RECEIVE_GIFT':
       return { label: `Received ${gift} from ${tx.counterparty || 'a deleted user'}`, Icon: ArrowDownLeft, tone: 'text-[#FFD166]', earned: true };
     default:
@@ -31,7 +35,7 @@ function formatWhen(value) {
 /**
  * Balances (spendable vs. earned from gifts), today's Meet-to-Earn progress and recent transactions
  */
-export default function WalletModal({ token, onClose, onOpenBoost, onOpenTopUp }) {
+export default function WalletModal({ token, onClose, onOpenBoost, onOpenTopUp, onOpenInvite, inviterReward = 5 }) {
   const [wallet, setWallet] = useState(null);
   const [transactions, setTransactions] = useState(null);
   const [error, setError] = useState('');
@@ -129,6 +133,13 @@ export default function WalletModal({ token, onClose, onOpenBoost, onOpenTopUp }
                 <span>Top up</span>
               </button>
             </div>
+            <button
+              onClick={onOpenInvite}
+              className="w-full -mt-3 mb-5 py-2.5 rounded-2xl bg-[#3DDC97]/10 border border-[#3DDC97]/40 text-[#3DDC97] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Gift size={13} />
+              <span>Invite friends · free VIBE (+{inviterReward} each)</span>
+            </button>
           </>
         )}
 

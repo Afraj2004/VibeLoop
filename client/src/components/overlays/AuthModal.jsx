@@ -8,6 +8,7 @@ import VerifyEmailStep from './VerifyEmailStep.jsx';
 import ForgotPasswordStep from './ForgotPasswordStep.jsx';
 import BirthDateInput from './BirthDateInput.jsx';
 import { ageFrom, MIN_AGE } from '../../utils/age.js';
+import { getInviteCode } from '../../utils/referral.js';
 
 // knownBirthDate: the guest session's date of birth, kept (and shown locked) when registering from it
 export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, token, isGuest, knownBirthDate = null, initialMode = 'login', signupBonus = 5 }) {
@@ -81,7 +82,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, backendUrl, 
         if (ageFrom(formData.birthDate) < MIN_AGE) throw new Error(`VibeLoop is only for people ${MIN_AGE} and over.`);
         const location = (place.coords ? place : await detectCountry()).coords;
         // Registration is only reachable after the app-wide age/terms gate has been accepted
-        payload = { ...formData, location, ageConfirmed: true, termsAccepted: true };
+        payload = { ...formData, location, ageConfirmed: true, termsAccepted: true, ref: getInviteCode() || undefined };
       }
 
       const res = await fetch(`${backendUrl}${endpoint}`, {

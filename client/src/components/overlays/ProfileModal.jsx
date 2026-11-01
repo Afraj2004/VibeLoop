@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { X, Camera, Lock, LogOut, UserCog, Loader2, Sparkles, MapPin, Heart } from 'lucide-react';
+import { X, Camera, Lock, LogOut, UserCog, Loader2, Sparkles, MapPin, Heart, Gift } from 'lucide-react';
 import Avatar from '../hud/Avatar.jsx';
 import GenderLabel from '../hud/GenderLabel.jsx';
 import { apiFetch } from '../../utils/api.js';
@@ -12,7 +12,9 @@ import { ageFrom, formatBirthDate } from '../../utils/age.js';
 /**
  * Your profile: photo (the first one earns VIBE), country, the locked gender, sign out
  */
-export default function ProfileModal({ currentUser, token, photoReward, onClose, onUpdated, onReward, onOpenAccount, onLogout }) {
+export default function ProfileModal({
+  currentUser, token, photoReward, inviterReward, onClose, onUpdated, onReward, onOpenAccount, onOpenInvite, onLogout
+}) {
   const [busy, setBusy] = useState(null); // 'photo' | 'country' | null
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
@@ -175,7 +177,14 @@ export default function ProfileModal({ currentUser, token, photoReward, onClose,
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-2">
+        <button
+          onClick={onOpenInvite}
+          className="mt-5 w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-[#3DDC97]/10 border border-[#3DDC97]/40 text-[#3DDC97] text-xs font-extrabold cursor-pointer"
+        >
+          <Gift size={15} /> Invite friends · +{inviterReward} VIBE each
+        </button>
+
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <button
             onClick={onOpenAccount}
             className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-800 hover:border-slate-600 text-slate-300 text-xs font-bold cursor-pointer"

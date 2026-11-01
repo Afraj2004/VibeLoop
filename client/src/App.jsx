@@ -16,6 +16,9 @@ import CallOverlay from './components/overlays/CallOverlay.jsx';
 import HistoryBar from './components/overlays/HistoryBar.jsx';
 import BirthDateModal from './components/overlays/BirthDateModal.jsx';
 import LeaderboardModal, { MEDALS } from './components/overlays/LeaderboardModal.jsx';
+import InviteModal from './components/overlays/InviteModal.jsx';
+import SharePrompt from './components/overlays/SharePrompt.jsx';
+import { getInviteCode, clearInviteCode } from './utils/referral.js';
 import { ageRangeLabel, FILTER_MIN_AGE, FILTER_MAX_AGE } from './utils/age.js';
 import { useSocket } from './hooks/useSocket.js';
 import { useVibeWebRTC } from './hooks/useVibeWebRTC.js';
@@ -27,6 +30,10 @@ import LikeBurst from './components/hud/LikeBurst.jsx';
 import GenderLabel, { genderText } from './components/hud/GenderLabel.jsx';
 import { COUNTRIES, flagEmoji } from './utils/countries.js';
 import { Sparkles, AlertTriangle, Flag, UserPlus, Users, Heart, Loader2 } from 'lucide-react';
+
+// After a call this long, suggest sharing VibeLoop (at most once per SHARE_PROMPT_EVERY_MS)
+const SHARE_PROMPT_MIN_CALL_MS = 2 * 60 * 1000;
+const SHARE_PROMPT_EVERY_MS = 3 * 24 * 60 * 60 * 1000;
 
 const DEFAULT_PREFERENCES = { targetGender: 'any', targetCountry: 'ALL', minAge: FILTER_MIN_AGE, maxAge: FILTER_MAX_AGE };
 
@@ -67,6 +74,9 @@ export default function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isFriendsOpen, setIsFriendsOpen] = useState(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [showSharePrompt, setShowSharePrompt] = useState(false);
+  const [inviterReward, setInviterReward] = useState(5);
   const [authMode, setAuthMode] = useState('login');
   const [boostUntil, setBoostUntil] = useState(null);
   const [boostPrice, setBoostPrice] = useState(10);
@@ -147,7 +157,7 @@ export default function App() {
     const birthDate = pendingBirthDateRef.current;
     apiFetch('/api/auth/guest', {
       method: 'POST',
-      body: { ageConfirmed: true, termsAccepted: true, ...(birthDate && { birthDate }) }
+      body: { ageConfirmed: true, termsAccepted: true, ...(birthDate && { birthDate }), ref: getInviteCode() || undefined }
     })
       .then((data) => {
         if (!cancelled) {
@@ -306,12 +316,19 @@ export default function App() {
       if (typeof balance === 'number') setWalletBalance(balance);
     };
 
+    const onReferralReward = ({ amount, role, friend }) => {
+      showNotice(role === 'inviter'
+        ? `🎁 ${friend} joined with your invite: +${amount} VIBE!`
+        : `🎁 +${amount} VIBE for joining with a friend's invite!`);
+    };
+
     socket.on('m2e_progress', onProgress);
     socket.on('gift_received', onGiftReceived);
     socket.on('history_updated', fetchHistory);
     socket.on('safety_ack', onSafetyAck);
     socket.on('safety_error', onSafetyError);
     socket.on('wallet_updated', onWalletUpdated);
+    socket.on('referral_reward', onReferralReward);
     socket.on('partner_left', onPartnerLeft);
     socket.on('peer_likes', onPeerLikes);
     socket.on('like_update', onPeerLikes);
@@ -325,6 +342,7 @@ export default function App() {
       socket.off('safety_ack', onSafetyAck);
       socket.off('safety_error', onSafetyError);
       socket.off('wallet_updated', onWalletUpdated);
+      socket.off('referral_reward', onReferralReward);
       socket.off('partner_left', onPartnerLeft);
       socket.off('peer_likes', onPeerLikes);
       socket.off('like_update', onPeerLikes);
@@ -341,6 +359,44 @@ export default function App() {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
   }, [remoteStream]);
 
+  // A long call just ended: a good moment to suggest sharing
+  const callStartedAtRef = useRef(null);
+  useEffect(() => {
+    if (isMatched) {
+      callStartedAtRef.current = Date.now();
+      return;
+    }
+    const startedAt = callStartedAtRef.current;
+    callStartedAtRef.current = null;
+    if (!startedAt || Date.now() - startedAt < SHARE_PROMPT_MIN_CALL_MS) return;
+    try {
+      const last = Number(localStorage.getItem('vibeloop_share_prompt_at')) || 0;
+      if (Date.now() - last < SHARE_PROMPT_EVERY_MS) return;
+      localStorage.setItem('vibeloop_share_prompt_at', String(Date.now()));
+    } catch {
+      return;
+    }
+    setShowSharePrompt(true);
+  }, [isMatched]);
+
+  // The invite reward shown on the prompt comes from the server
+  useEffect(() => {
+    apiFetch('/api/referrals')
+      .then((data) => setInviterReward(data.rewards.inviter))
+      .catch(() => {});
+  }, []);
+
+  const openInvite = useCallback(() => {
+    setShowSharePrompt(false);
+    if (isRegistered) {
+      setIsInviteOpen(true);
+    } else {
+      setAuthMode('register');
+      setIsAuthModalOpen(true);
+    }
+  }, [isRegistered]);
+  const closeSharePrompt = useCallback(() => setShowSharePrompt(false), []);
+
   // Close the report dialog if the partner leaves first
   useEffect(() => {
     if (!isMatched) setIsReportOpen(false);
@@ -351,11 +407,14 @@ export default function App() {
     setIsProfileOpen(false);
     setIsFriendsOpen(false);
     setIsLeaderboardOpen(false);
+    setIsInviteOpen(false);
     clearSession();
   };
 
   const handleAuthSuccess = (user, tok, upgraded, bonus) => {
     persistSession(user, tok);
+    // The invite (if any) is now recorded on the account
+    if (!user.isGuest) clearInviteCode();
     const bonusText = bonus > 0 ? ` +${bonus} VIBE welcome bonus added.` : '';
     if (upgraded) showNotice(`Account created. Your VIBE and history came with you.${bonusText}`);
     else if (bonus > 0) showNotice(`Welcome to VibeLoop!${bonusText}`);
@@ -821,7 +880,25 @@ export default function App() {
             setIsProfileOpen(false);
             setIsAccountOpen(true);
           }}
+          onOpenInvite={() => {
+            setIsProfileOpen(false);
+            setIsInviteOpen(true);
+          }}
+          inviterReward={inviterReward}
           onLogout={handleLogout}
+        />
+      )}
+
+      {isInviteOpen && isRegistered && (
+        <InviteModal token={token} onClose={() => setIsInviteOpen(false)} />
+      )}
+
+      {showSharePrompt && !isMatched && (
+        <SharePrompt
+          isRegistered={isRegistered}
+          inviterReward={inviterReward}
+          onInvite={openInvite}
+          onClose={closeSharePrompt}
         />
       )}
 
@@ -885,6 +962,11 @@ export default function App() {
             setIsWalletOpen(false);
             setIsTopUpOpen(true);
           }}
+          onOpenInvite={() => {
+            setIsWalletOpen(false);
+            openInvite();
+          }}
+          inviterReward={inviterReward}
         />
       )}
 

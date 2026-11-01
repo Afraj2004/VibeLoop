@@ -335,7 +335,7 @@ describe('sign-up bonus', () => {
     } finally {
       db.query = original;
     }
-    assert.match(guestQueries[0], /vibe_balance, birth_date\) VALUES \(\$1, TRUE, NOW\(\), NOW\(\), \$2, 0, \$3\)/);
+    assert.match(guestQueries[0], /vibe_balance, birth_date, referred_by\) VALUES \(\$1, TRUE, NOW\(\), NOW\(\), \$2, 0, \$3, /);
   });
 });
 
